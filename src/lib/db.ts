@@ -1,28 +1,27 @@
 import "server-only";
 
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 
-const globalForPrisma = globalThis as typeof globalThis & {
-  prisma?: PrismaClient;
+const globalForDb = globalThis as typeof globalThis & {
+  db?: ReturnType<typeof drizzle>;
 };
 
-function createPrismaClient() {
+function createDb() {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
 
-  return new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
-  });
+  const client = postgres(connectionString);
+  return drizzle(client);
 }
 
-const db = globalForPrisma.prisma ?? createPrismaClient();
+const db = globalForDb.db ?? createDb();
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = db;
+  globalForDb.db = db;
 }
 
 export default db;

@@ -52,7 +52,7 @@ export interface TransactionWithRelations {
   brand: {
     id: string;
     name: string;
-  };
+  } | null;
   project: {
     id: string;
     name: string;
@@ -60,7 +60,7 @@ export interface TransactionWithRelations {
   createdBy: {
     id: string;
     name: string;
-  };
+  } | null;
 }
 
 export interface UserWithRelations {
@@ -81,13 +81,14 @@ export interface InviteWithRelations {
   email: string;
   role: UserRole;
   status: InviteStatus;
+  token: string;
   expiresAt: Date;
   createdAt: Date;
   invitedBy: {
     id: string;
     name: string;
     email: string;
-  };
+  } | null;
   brand: {
     id: string;
     name: string;

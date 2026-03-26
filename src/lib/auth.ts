@@ -2,7 +2,9 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { eq, and, lt } from "drizzle-orm";
 import db from "./db";
+import { users, sessions } from "@/db/schema";
 import type { UserRole, UserStatus } from "@/lib/types/enums";
 
 function getRequiredEnv(name: string): string {
@@ -77,21 +79,20 @@ export async function createSession(
     "7d",
   );
 
-  await db.session.create({
-    data: {
-      userId,
-      token,
-      expiresAt,
-      userAgent,
-      ipAddress,
-    },
+  const sessionId = crypto.randomUUID();
+
+  await db.insert(sessions).values({
+    id: sessionId,
+    userId,
+    token,
+    expiresAt,
+    userAgent,
+    ipAddress,
+    createdAt: new Date(),
   });
 
   // Update last login
-  await db.user.update({
-    where: { id: userId },
-    data: { lastLoginAt: new Date() },
-  });
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
 
   return token;
 }
@@ -106,34 +107,44 @@ export async function getSession(): Promise<Session | null> {
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    const session = await db.session.findUnique({
-      where: { token },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            status: true,
-          },
-        },
-      },
-    });
+    const result = await db
+      .select({
+        id: sessions.id,
+        token: sessions.token,
+        expiresAt: sessions.expiresAt,
+        userId: sessions.userId,
+        userId2: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        status: users.status,
+      })
+      .from(sessions)
+      .innerJoin(users, eq(sessions.userId, users.id))
+      .where(eq(sessions.token, token))
+      .limit(1);
 
-    if (!session || session.expiresAt < new Date()) {
-      if (session) {
-        await db.session.delete({ where: { id: session.id } });
-      }
+    if (!result || result.length === 0) return null;
+
+    const session = result[0];
+
+    if (session.expiresAt < new Date()) {
+      await db.delete(sessions).where(eq(sessions.token, token));
       return null;
     }
 
-    if (session.user.status !== "ACTIVE") {
+    if (session.status !== "ACTIVE") {
       return null;
     }
 
     return {
-      user: session.user as SessionUser,
+      user: {
+        id: session.userId2,
+        email: session.email,
+        name: session.name,
+        role: session.role as UserRole,
+        status: session.status as UserStatus,
+      },
       token: session.token,
       expiresAt: session.expiresAt,
     };
@@ -145,9 +156,7 @@ export async function getSession(): Promise<Session | null> {
 
 export async function invalidateSession(token: string): Promise<void> {
   try {
-    await db.session.deleteMany({
-      where: { token },
-    });
+    await db.delete(sessions).where(eq(sessions.token, token));
   } catch (error) {
     console.error("Invalidate session error:", error);
   }
@@ -155,9 +164,7 @@ export async function invalidateSession(token: string): Promise<void> {
 
 export async function invalidateAllUserSessions(userId: string): Promise<void> {
   try {
-    await db.session.deleteMany({
-      where: { userId },
-    });
+    await db.delete(sessions).where(eq(sessions.userId, userId));
   } catch (error) {
     console.error("Invalidate all sessions error:", error);
   }

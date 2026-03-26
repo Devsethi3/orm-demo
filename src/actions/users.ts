@@ -1,15 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
 import db from "@/lib/db";
 import { getSession, invalidateAllUserSessions } from "@/lib/auth";
 import type { ActionResponse, UserWithRelations } from "@/types";
-import { UserRole, UserStatus } from "@/generated/prisma/enums";
-import { Prisma } from "@/generated/prisma/client";
 import {
   updateProfileNameSchema,
   type UpdateProfileNameInput,
 } from "@/lib/validations";
+import { users, auditLogs } from "@/db/schema";
 
 export async function getUsers(): Promise<UserWithRelations[]> {
   const session = await getSession();
@@ -18,23 +18,13 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     return [];
   }
 
-  const users = await db.user.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      lastLoginAt: true,
-      createdAt: true,
-      _count: {
-        select: { transactions: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const usersList = await db
+    .select()
+    .from(users)
+    .orderBy((t) => t.createdAt)
+    .limit(1000);
 
-  return users as UserWithRelations[];
+  return usersList as UserWithRelations[];
 }
 
 export async function getUser(id: string) {
@@ -44,31 +34,18 @@ export async function getUser(id: string) {
     return null;
   }
 
-  return db.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      lastLoginAt: true,
-      createdAt: true,
-      brandMembers: {
-        include: {
-          brand: { select: { id: true, name: true } },
-        },
-      },
-      _count: {
-        select: { transactions: true },
-      },
-    },
-  });
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+
+  return result[0] || null;
 }
 
 export async function updateUserRole(
   userId: string,
-  role: UserRole,
+  role: string,
 ): Promise<ActionResponse> {
   try {
     const session = await getSession();
@@ -81,26 +58,32 @@ export async function updateUserRole(
       return { success: false, error: "Cannot change your own role" };
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } });
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userResult[0];
 
     if (!user) {
       return { success: false, error: "User not found" };
     }
 
-    await db.user.update({
-      where: { id: userId },
-      data: { role },
-    });
+    await db.update(users).set({
+      role: role as any,
+      updatedAt: new Date(),
+    }).where(eq(users.id, userId));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "USER_ROLE_UPDATED",
-        entityType: "USER",
-        entityId: userId,
-        oldData: { role: user.role } as unknown as Prisma.JsonObject,
-        newData: { role } as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "USER_ROLE_UPDATED",
+      entityType: "USER",
+      entityId: userId,
+      oldData: JSON.stringify({ role: user.role }),
+      newData: JSON.stringify({ role }),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/users");
@@ -114,7 +97,7 @@ export async function updateUserRole(
 
 export async function updateUserStatus(
   userId: string,
-  status: UserStatus,
+  status: string,
 ): Promise<ActionResponse> {
   try {
     const session = await getSession();
@@ -127,31 +110,37 @@ export async function updateUserStatus(
       return { success: false, error: "Cannot change your own status" };
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } });
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userResult[0];
 
     if (!user) {
       return { success: false, error: "User not found" };
     }
 
-    await db.user.update({
-      where: { id: userId },
-      data: { status },
-    });
+    await db.update(users).set({
+      status: status as any,
+      updatedAt: new Date(),
+    }).where(eq(users.id, userId));
 
     // Invalidate sessions if suspending
     if (status === "SUSPENDED") {
       await invalidateAllUserSessions(userId);
     }
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "USER_STATUS_UPDATED",
-        entityType: "USER",
-        entityId: userId,
-        oldData: { status: user.status } as unknown as Prisma.JsonObject,
-        newData: { status } as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "USER_STATUS_UPDATED",
+      entityType: "USER",
+      entityId: userId,
+      oldData: JSON.stringify({ status: user.status }),
+      newData: JSON.stringify({ status }),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/users");
@@ -175,12 +164,13 @@ export async function deleteUser(userId: string): Promise<ActionResponse> {
       return { success: false, error: "Cannot delete your own account" };
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        _count: { select: { transactions: true } },
-      },
-    });
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userResult[0];
 
     if (!user) {
       return { success: false, error: "User not found" };
@@ -189,24 +179,19 @@ export async function deleteUser(userId: string): Promise<ActionResponse> {
     // Invalidate all sessions
     await invalidateAllUserSessions(userId);
 
-    if (user._count.transactions > 0) {
-      // Soft delete - suspend the user
-      await db.user.update({
-        where: { id: userId },
-        data: { status: "SUSPENDED" },
-      });
-    } else {
-      // Hard delete
-      await db.user.delete({ where: { id: userId } });
-    }
+    // Soft delete - suspend the user
+    await db.update(users).set({
+      status: "SUSPENDED" as any,
+      updatedAt: new Date(),
+    }).where(eq(users.id, userId));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "USER_DELETED",
-        entityType: "USER",
-        entityId: userId,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "USER_DELETED",
+      entityType: "USER",
+      entityId: userId,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/users");
@@ -242,10 +227,13 @@ export async function updateCurrentUserName(
 
     const { name } = validated.data;
 
-    const currentUser = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, name: true },
-    });
+    const currentUserResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1);
+
+    const currentUser = currentUserResult[0];
 
     if (!currentUser) {
       return { success: false, error: "User not found" };
@@ -255,20 +243,20 @@ export async function updateCurrentUserName(
       return { success: true, data: { name } };
     }
 
-    await db.user.update({
-      where: { id: session.user.id },
-      data: { name },
-    });
+    await db.update(users).set({
+      name,
+      updatedAt: new Date(),
+    }).where(eq(users.id, session.user.id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "USER_NAME_UPDATED",
-        entityType: "USER",
-        entityId: session.user.id,
-        oldData: { name: currentUser.name } as unknown as Prisma.JsonObject,
-        newData: { name } as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "USER_NAME_UPDATED",
+      entityType: "USER",
+      entityId: session.user.id,
+      oldData: JSON.stringify({ name: currentUser.name }),
+      newData: JSON.stringify({ name }),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard", "layout");

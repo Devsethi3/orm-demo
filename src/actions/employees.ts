@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { eq, and } from "drizzle-orm";
 import db from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import {
@@ -10,9 +11,16 @@ import {
   type SalaryPaymentInput,
 } from "@/lib/validations";
 import type { ActionResponse, EmployeeWithRelations } from "@/types";
-import { Prisma } from "@/generated/prisma/client";
 import { convertToUSD } from "@/lib/currency.server";
 import { endOfMonth, startOfMonth } from "date-fns";
+import {
+  employees,
+  salaryPayments,
+  bonuses,
+  transactions,
+  auditLogs,
+  brands,
+} from "@/db/schema";
 
 function toSerializableEmployee(employee: {
   id: string;
@@ -22,7 +30,7 @@ function toSerializableEmployee(employee: {
   email: string;
   position: string;
   department: string | null;
-  salaryAmount: Prisma.Decimal;
+  salaryAmount: string | number;
   salaryCurrency: string;
   paymentDay: number;
   joinDate: Date;
@@ -40,10 +48,10 @@ function toSerializableEmployee(employee: {
 function toSerializableSalaryPayment(payment: {
   id: string;
   employeeId: string;
-  amount: Prisma.Decimal;
+  amount: string | number;
   currency: string;
-  conversionRate: Prisma.Decimal;
-  usdValue: Prisma.Decimal;
+  conversionRate: string | number;
+  usdValue: string | number;
   paymentDate: Date;
   periodStart: Date;
   periodEnd: Date;
@@ -83,34 +91,38 @@ export async function createEmployee(
     }
 
     const data = validated.data;
+    const employeeId = crypto.randomUUID();
 
-    const employee = await db.employee.create({
-      data: {
-        brandId: data.brandId,
-        name: data.name,
-        email: data.email.toLowerCase(),
-        position: data.position,
-        department: data.department,
-        salaryAmount: data.salaryAmount,
-        salaryCurrency: data.salaryCurrency.toUpperCase(),
-        paymentDay: data.paymentDay,
-        joinDate: data.joinDate,
-      },
+    await db.insert(employees).values({
+      id: employeeId,
+      brandId: data.brandId,
+      userId: null,
+      name: data.name,
+      email: data.email.toLowerCase(),
+      position: data.position,
+      department: data.department || null,
+      salaryAmount: String(data.salaryAmount),
+      salaryCurrency: data.salaryCurrency.toUpperCase(),
+      paymentDay: data.paymentDay,
+      joinDate: data.joinDate,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "EMPLOYEE_CREATED",
-        entityType: "EMPLOYEE",
-        entityId: employee.id,
-        newData: data as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "EMPLOYEE_CREATED",
+      entityType: "EMPLOYEE",
+      entityId: employeeId,
+      newData: JSON.stringify(data),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
 
-    return { success: true, data: toSerializableEmployee(employee) };
+    return { success: true, data: { id: employeeId, ...data } };
   } catch (error) {
     console.error("Create employee error:", error);
     return { success: false, error: "Failed to create employee" };
@@ -124,37 +136,42 @@ export async function getEmployees(
 
   if (
     !session ||
-    (session.user.role !== "ADMIN" &&
-      session.user.role !== "ACCOUNT_EXECUTIVE")
+    (session.user.role !== "ADMIN" && session.user.role !== "ACCOUNT_EXECUTIVE")
   ) {
     return [];
   }
 
-  const where: Prisma.EmployeeWhereInput = { isActive: true };
+  // Build the where conditions array
+  const conditions = [eq(employees.isActive, true)];
 
   if (brandId) {
-    where.brandId = brandId;
+    conditions.push(eq(employees.brandId, brandId));
   }
 
-  const employees = await db.employee.findMany({
-    where,
-    include: {
-      brand: { select: { id: true, name: true } },
-      _count: { select: { salaryPayments: true } },
-      salaryPayments: {
-        take: 1,
-        orderBy: { paymentDate: "desc" },
-        select: { paymentDate: true, status: true },
+  const results = await db
+    .select({
+      employee: employees,
+      brand: {
+        id: brands.id,
+        name: brands.name,
+        slug: brands.slug,
+        description: brands.description,
+        logoUrl: brands.logoUrl,
+        ownerId: brands.ownerId,
+        isActive: brands.isActive,
+        createdAt: brands.createdAt,
+        updatedAt: brands.updatedAt,
       },
-    },
-    orderBy: { name: "asc" },
-  });
+    })
+    .from(employees)
+    .leftJoin(brands, eq(employees.brandId, brands.id))
+    .where(and(...conditions));
 
-  return employees.map((emp) => ({
-    ...emp,
-    salaryAmount: Number(emp.salaryAmount), 
-    lastPayment: emp.salaryPayments[0] || null,
-  })) satisfies EmployeeWithRelations[];
+  return results.map((row) => ({
+    ...row.employee,
+    salaryAmount: Number(row.employee.salaryAmount),
+    brand: row.brand!,
+  })) as unknown as EmployeeWithRelations[];
 }
 
 export async function getEmployee(id: string) {
@@ -164,37 +181,36 @@ export async function getEmployee(id: string) {
     return null;
   }
 
-  const employee = await db.employee.findUnique({
-    where: { id },
-    include: {
-      brand: { select: { id: true, name: true } },
-      salaryPayments: {
-        orderBy: { paymentDate: "desc" },
-        take: 12,
+  const result = await db
+    .select({
+      employee: employees,
+      brand: {
+        id: brands.id,
+        name: brands.name,
+        slug: brands.slug,
+        description: brands.description,
+        logoUrl: brands.logoUrl,
+        ownerId: brands.ownerId,
+        isActive: brands.isActive,
+        createdAt: brands.createdAt,
+        updatedAt: brands.updatedAt,
       },
-      bonuses: {
-        orderBy: { paymentDate: "desc" },
-      },
-    },
-  });
+    })
+    .from(employees)
+    .leftJoin(brands, eq(employees.brandId, brands.id))
+    .where(eq(employees.id, id))
+    .limit(1);
 
-  if (!employee) {
+  const row = result[0];
+
+  if (!row) {
     return null;
   }
 
   return {
-    ...employee,
-    salaryAmount: Number(employee.salaryAmount),
-    salaryPayments: employee.salaryPayments.map((payment) => ({
-      ...payment,
-      amount: Number(payment.amount),
-      conversionRate: Number(payment.conversionRate),
-      usdValue: Number(payment.usdValue),
-    })),
-    bonuses: employee.bonuses.map((bonus) => ({
-      ...bonus,
-      amount: Number(bonus.amount),
-    })),
+    ...row.employee,
+    salaryAmount: Number(row.employee.salaryAmount),
+    brand: row.brand,
   };
 }
 
@@ -209,39 +225,48 @@ export async function updateEmployee(
       return { success: false, error: "Unauthorized" };
     }
 
-    const existing = await db.employee.findUnique({ where: { id } });
+    const existingResult = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.id, id))
+      .limit(1);
+
+    const existing = existingResult[0];
 
     if (!existing) {
       return { success: false, error: "Employee not found" };
     }
 
-    const employee = await db.employee.update({
-      where: { id },
-      data: {
+    await db
+      .update(employees)
+      .set({
         name: input.name,
         email: input.email?.toLowerCase(),
         position: input.position,
         department: input.department,
-        salaryAmount: input.salaryAmount,
+        salaryAmount: input.salaryAmount
+          ? String(input.salaryAmount)
+          : existing.salaryAmount,
         salaryCurrency: input.salaryCurrency?.toUpperCase(),
         paymentDay: input.paymentDay,
-      },
-    });
+        updatedAt: new Date(),
+      })
+      .where(eq(employees.id, id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "EMPLOYEE_UPDATED",
-        entityType: "EMPLOYEE",
-        entityId: id,
-        oldData: existing as unknown as Prisma.JsonObject,
-        newData: input as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "EMPLOYEE_UPDATED",
+      entityType: "EMPLOYEE",
+      entityId: id,
+      oldData: JSON.stringify(existing),
+      newData: JSON.stringify(input),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
 
-    return { success: true, data: toSerializableEmployee(employee) };
+    return { success: true, data: { id, ...input } };
   } catch (error) {
     console.error("Update employee error:", error);
     return { success: false, error: "Failed to update employee" };
@@ -256,21 +281,22 @@ export async function terminateEmployee(id: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    await db.employee.update({
-      where: { id },
-      data: {
+    await db
+      .update(employees)
+      .set({
         isActive: false,
         terminationDate: new Date(),
-      },
-    });
+        updatedAt: new Date(),
+      })
+      .where(eq(employees.id, id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "EMPLOYEE_TERMINATED",
-        entityType: "EMPLOYEE",
-        entityId: id,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "EMPLOYEE_TERMINATED",
+      entityType: "EMPLOYEE",
+      entityId: id,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
@@ -306,68 +332,80 @@ export async function createSalaryPayment(
 
     const data = validated.data;
 
-    // Calculate USD value
     const { usdValue, conversionRate } = await convertToUSD(
       data.amount,
       data.currency,
     );
 
-    const payment = await db.$transaction(async (tx) => {
-      // Create payment record
-      const salaryPayment = await tx.salaryPayment.create({
-        data: {
-          employeeId: data.employeeId,
-          amount: data.amount,
-          currency: data.currency.toUpperCase(),
-          conversionRate,
-          usdValue,
-          paymentDate: data.paymentDate,
-          periodStart: data.periodStart,
-          periodEnd: data.periodEnd,
-          status: "PAID",
-          notes: data.notes,
-        },
-      });
+    const paymentId = crypto.randomUUID();
 
-      // Create expense transaction
-      const employee = await tx.employee.findUnique({
-        where: { id: data.employeeId },
-        select: { brandId: true, name: true },
-      });
-
-      if (employee) {
-        await tx.transaction.create({
-          data: {
-            brandId: employee.brandId,
-            type: "EXPENSE",
-            source: "BANK",
-            description: `Salary payment - ${employee.name}`,
-            originalAmount: data.amount,
-            originalCurrency: data.currency.toUpperCase(),
-            conversionRate,
-            usdValue,
-            transactionDate: data.paymentDate,
-            createdById: session.user.id,
-          },
-        });
-      }
-
-      return salaryPayment;
+    await db.insert(salaryPayments).values({
+      id: paymentId,
+      employeeId: data.employeeId,
+      amount: String(data.amount),
+      currency: data.currency.toUpperCase(),
+      conversionRate: String(conversionRate),
+      usdValue: String(usdValue),
+      paymentDate: data.paymentDate,
+      periodStart: data.periodStart,
+      periodEnd: data.periodEnd,
+      status: "PAID",
+      notes: data.notes || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SALARY_PAYMENT_CREATED",
-        entityType: "SALARY_PAYMENT",
-        entityId: payment.id,
-        newData: data as unknown as Prisma.JsonObject,
-      },
+    const employeeResult = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.id, data.employeeId))
+      .limit(1);
+
+    const employee = employeeResult[0];
+
+    if (employee) {
+      await db.insert(transactions).values({
+        id: crypto.randomUUID(),
+        brandId: employee.brandId,
+        projectId: null,
+        type: "EXPENSE",
+        source: "BANK",
+        description: `Salary payment - ${employee.name}`,
+        originalAmount: String(data.amount),
+        originalCurrency: data.currency.toUpperCase(),
+        conversionRate: String(conversionRate),
+        usdValue: String(usdValue),
+        transactionDate: data.paymentDate,
+        reference: null,
+        notes: null,
+        createdById: session.user.id,
+        isReconciled: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SALARY_PAYMENT_CREATED",
+      entityType: "SALARY_PAYMENT",
+      entityId: paymentId,
+      newData: JSON.stringify(data),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
 
-    return { success: true, data: toSerializableSalaryPayment(payment) };
+    return {
+      success: true,
+      data: {
+        id: paymentId,
+        amount: Number(data.amount),
+        conversionRate,
+        usdValue,
+      },
+    };
   } catch (error) {
     console.error("Create salary payment error:", error);
     return { success: false, error: "Failed to create salary payment" };
@@ -384,24 +422,23 @@ export async function markEmployeePaid(
       return { success: false, error: "Unauthorized" };
     }
 
-    const employee = await db.employee.findUnique({
-      where: { id: employeeId },
-      select: {
-        id: true,
-        brandId: true,
-        name: true,
-        salaryAmount: true,
-        salaryCurrency: true,
-        isActive: true,
-      },
-    });
+    const employeeResult = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+
+    const employee = employeeResult[0];
 
     if (!employee) {
       return { success: false, error: "Employee not found" };
     }
 
     if (!employee.isActive) {
-      return { success: false, error: "Cannot mark a terminated employee as paid" };
+      return {
+        success: false,
+        error: "Cannot mark a terminated employee as paid",
+      };
     }
 
     const now = new Date();
@@ -412,58 +449,69 @@ export async function markEmployeePaid(
 
     const { usdValue, conversionRate } = await convertToUSD(amount, currency);
 
-    const payment = await db.$transaction(async (tx) => {
-      const createdPayment = await tx.salaryPayment.create({
-        data: {
-          employeeId: employee.id,
-          amount,
-          currency,
-          conversionRate,
-          usdValue,
-          paymentDate: now,
-          periodStart,
-          periodEnd,
-          status: "PAID",
-          notes: "Marked paid from employees table",
-        },
-      });
+    const paymentId = crypto.randomUUID();
 
-      await tx.transaction.create({
-        data: {
-          brandId: employee.brandId,
-          type: "EXPENSE",
-          source: "BANK",
-          description: `Salary payment - ${employee.name}`,
-          originalAmount: amount,
-          originalCurrency: currency,
-          conversionRate,
-          usdValue,
-          transactionDate: now,
-          createdById: session.user.id,
-          notes: "Marked paid from employees table",
-        },
-      });
-
-      return createdPayment;
+    await db.insert(salaryPayments).values({
+      id: paymentId,
+      employeeId: employee.id,
+      amount: String(amount),
+      currency,
+      conversionRate: String(conversionRate),
+      usdValue: String(usdValue),
+      paymentDate: now,
+      periodStart,
+      periodEnd,
+      status: "PAID",
+      notes: "Marked paid from employees table",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SALARY_PAYMENT_MARKED_PAID",
-        entityType: "EMPLOYEE",
-        entityId: employee.id,
-        newData: {
-          amount,
-          currency,
-          paymentDate: now,
-        } as unknown as Prisma.JsonObject,
-      },
+    await db.insert(transactions).values({
+      id: crypto.randomUUID(),
+      brandId: employee.brandId,
+      projectId: null,
+      type: "EXPENSE",
+      source: "BANK",
+      description: `Salary payment - ${employee.name}`,
+      originalAmount: String(amount),
+      originalCurrency: currency,
+      conversionRate: String(conversionRate),
+      usdValue: String(usdValue),
+      transactionDate: now,
+      reference: null,
+      notes: "Marked paid from employees table",
+      createdById: session.user.id,
+      isReconciled: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SALARY_PAYMENT_MARKED_PAID",
+      entityType: "EMPLOYEE",
+      entityId: employee.id,
+      newData: JSON.stringify({
+        amount,
+        currency,
+        paymentDate: now,
+      }),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
 
-    return { success: true, data: toSerializableSalaryPayment(payment) };
+    return {
+      success: true,
+      data: {
+        id: paymentId,
+        amount,
+        conversionRate,
+        usdValue: Number(usdValue),
+      },
+    };
   } catch (error) {
     console.error("Mark employee paid error:", error);
     return { success: false, error: "Failed to mark employee as paid" };
@@ -483,29 +531,31 @@ export async function addBonus(
       return { success: false, error: "Unauthorized" };
     }
 
-    const bonus = await db.bonus.create({
-      data: {
-        employeeId,
-        amount,
-        currency: currency.toUpperCase(),
-        reason,
-        paymentDate: new Date(),
-      },
+    const bonusId = crypto.randomUUID();
+
+    await db.insert(bonuses).values({
+      id: bonusId,
+      employeeId,
+      amount: String(amount),
+      currency: currency.toUpperCase(),
+      reason,
+      paymentDate: new Date(),
+      createdAt: new Date(),
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "BONUS_ADDED",
-        entityType: "BONUS",
-        entityId: bonus.id,
-        newData: {
-          employeeId,
-          amount,
-          currency,
-          reason,
-        } as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "BONUS_ADDED",
+      entityType: "BONUS",
+      entityId: bonusId,
+      newData: JSON.stringify({
+        employeeId,
+        amount,
+        currency,
+        reason,
+      }),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/employees");
@@ -513,8 +563,10 @@ export async function addBonus(
     return {
       success: true,
       data: {
-        ...bonus,
-        amount: Number(bonus.amount),
+        id: bonusId,
+        amount,
+        currency,
+        reason,
       },
     };
   } catch (error) {

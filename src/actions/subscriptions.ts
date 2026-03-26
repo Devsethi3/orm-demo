@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
 import db from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { subscriptionSchema, type SubscriptionInput } from "@/lib/validations";
 import type { ActionResponse, SubscriptionWithDue } from "@/types";
-import { Prisma } from "@/generated/prisma/client";
 import { addDays, isBefore, isAfter } from "date-fns";
+import { subscriptions, auditLogs } from "@/db/schema";
 
 export async function createSubscription(
   input: SubscriptionInput,
@@ -31,36 +32,39 @@ export async function createSubscription(
     }
 
     const data = validated.data;
+    const subscriptionId = crypto.randomUUID();
 
-    const subscription = await db.subscription.create({
-      data: {
-        name: data.name,
-        provider: data.provider,
-        description: data.description,
-        cost: data.cost,
-        currency: data.currency.toUpperCase(),
-        billingCycle: data.billingCycle,
-        nextDueDate: data.nextDueDate,
-        category: data.category,
-        url: data.url || null,
-        autoRenew: data.autoRenew,
-        reminderDays: data.reminderDays,
-      },
+    await db.insert(subscriptions).values({
+      id: subscriptionId,
+      name: data.name,
+      provider: data.provider,
+      description: data.description,
+      cost: String(data.cost),
+      currency: data.currency.toUpperCase(),
+      billingCycle: data.billingCycle,
+      nextDueDate: data.nextDueDate,
+      category: data.category,
+      url: data.url || null,
+      autoRenew: data.autoRenew,
+      reminderDays: data.reminderDays,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SUBSCRIPTION_CREATED",
-        entityType: "SUBSCRIPTION",
-        entityId: subscription.id,
-        newData: data as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SUBSCRIPTION_CREATED",
+      entityType: "SUBSCRIPTION",
+      entityId: subscriptionId,
+      newData: JSON.stringify(data),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/subscriptions");
 
-    return { success: true, data: subscription };
+    return { success: true, data: { id: subscriptionId, ...data } };
   } catch (error) {
     console.error("Create subscription error:", error);
     return { success: false, error: "Failed to create subscription" };
@@ -74,22 +78,22 @@ export async function getSubscriptions(): Promise<SubscriptionWithDue[]> {
     return [];
   }
 
-  const subscriptions = await db.subscription.findMany({
-    where: { isActive: true },
-    orderBy: { nextDueDate: "asc" },
-  });
+  const subscriptionsList = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.isActive, true));
 
   const now = new Date();
 
   // @ts-ignore
-  return subscriptions.map((sub) => {
+  return subscriptionsList.map((sub) => {
     const reminderDate = addDays(now, sub.reminderDays);
 
     return {
       id: sub.id,
       name: sub.name,
       provider: sub.provider,
-      cost: sub.cost,
+      cost: Number(sub.cost),
       currency: sub.currency,
       billingCycle: sub.billingCycle,
       nextDueDate: sub.nextDueDate,
@@ -110,9 +114,13 @@ export async function getSubscription(id: string) {
     return null;
   }
 
-  return db.subscription.findUnique({
-    where: { id },
-  });
+  const result = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.id, id))
+    .limit(1);
+
+  return result[0] || null;
 }
 
 export async function updateSubscription(
@@ -126,43 +134,47 @@ export async function updateSubscription(
       return { success: false, error: "Unauthorized" };
     }
 
-    const existing = await db.subscription.findUnique({ where: { id } });
+    const existingResult = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.id, id))
+      .limit(1);
+
+    const existing = existingResult[0];
 
     if (!existing) {
       return { success: false, error: "Subscription not found" };
     }
 
-    const subscription = await db.subscription.update({
-      where: { id },
-      data: {
-        name: input.name,
-        provider: input.provider,
-        description: input.description,
-        cost: input.cost,
-        currency: input.currency?.toUpperCase(),
-        billingCycle: input.billingCycle,
-        nextDueDate: input.nextDueDate,
-        category: input.category,
-        url: input.url || null,
-        autoRenew: input.autoRenew,
-        reminderDays: input.reminderDays,
-      },
-    });
+    await db.update(subscriptions).set({
+      name: input.name,
+      provider: input.provider,
+      description: input.description,
+      cost: input.cost ? String(input.cost) : existing.cost,
+      currency: input.currency?.toUpperCase(),
+      billingCycle: input.billingCycle,
+      nextDueDate: input.nextDueDate,
+      category: input.category,
+      url: input.url || null,
+      autoRenew: input.autoRenew,
+      reminderDays: input.reminderDays,
+      updatedAt: new Date(),
+    }).where(eq(subscriptions.id, id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SUBSCRIPTION_UPDATED",
-        entityType: "SUBSCRIPTION",
-        entityId: id,
-        oldData: existing as unknown as Prisma.JsonObject,
-        newData: input as unknown as Prisma.JsonObject,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SUBSCRIPTION_UPDATED",
+      entityType: "SUBSCRIPTION",
+      entityId: id,
+      oldData: JSON.stringify(existing),
+      newData: JSON.stringify(input),
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/subscriptions");
 
-    return { success: true, data: subscription };
+    return { success: true, data: { id, ...input } };
   } catch (error) {
     console.error("Update subscription error:", error);
     return { success: false, error: "Failed to update subscription" };
@@ -179,7 +191,13 @@ export async function markSubscriptionPaid(
       return { success: false, error: "Unauthorized" };
     }
 
-    const subscription = await db.subscription.findUnique({ where: { id } });
+    const subscriptionResult = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.id, id))
+      .limit(1);
+
+    const subscription = subscriptionResult[0];
 
     if (!subscription) {
       return { success: false, error: "Subscription not found" };
@@ -199,29 +217,29 @@ export async function markSubscriptionPaid(
         break;
       case "ONE_TIME":
         // Deactivate one-time subscriptions
-        await db.subscription.update({
-          where: { id },
-          data: { isActive: false, lastPaidDate: new Date() },
-        });
+        await db.update(subscriptions).set({
+          isActive: false,
+          lastPaidDate: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(subscriptions.id, id));
+
         revalidatePath("/dashboard/subscriptions");
         return { success: true };
     }
 
-    await db.subscription.update({
-      where: { id },
-      data: {
-        lastPaidDate: new Date(),
-        nextDueDate,
-      },
-    });
+    await db.update(subscriptions).set({
+      lastPaidDate: new Date(),
+      nextDueDate,
+      updatedAt: new Date(),
+    }).where(eq(subscriptions.id, id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SUBSCRIPTION_PAID",
-        entityType: "SUBSCRIPTION",
-        entityId: id,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SUBSCRIPTION_PAID",
+      entityType: "SUBSCRIPTION",
+      entityId: id,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/subscriptions");
@@ -241,18 +259,18 @@ export async function cancelSubscription(id: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    await db.subscription.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    await db.update(subscriptions).set({
+      isActive: false,
+      updatedAt: new Date(),
+    }).where(eq(subscriptions.id, id));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "SUBSCRIPTION_CANCELLED",
-        entityType: "SUBSCRIPTION",
-        entityId: id,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "SUBSCRIPTION_CANCELLED",
+      entityType: "SUBSCRIPTION",
+      entityId: id,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/subscriptions");

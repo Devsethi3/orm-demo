@@ -3,8 +3,10 @@
 import { getSession } from "@/lib/auth";
 import type { DashboardStats, MonthlyData } from "@/types";
 import { subMonths, startOfMonth, endOfMonth, format } from "date-fns";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
 
 import db from "@/lib/db";
+import { transactions, brands, projects, users } from "@/db/schema";
 
 export async function getDashboardStats(): Promise<DashboardStats | null> {
   const session = await getSession();
@@ -18,49 +20,95 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
   const previousMonthEnd = endOfMonth(subMonths(now, 1));
 
   try {
-    // Sequential queries - Neon HTTP doesn't support transactions
-    const currentMonthTransactions = await db.transaction.findMany({
-      where: {
-        transactionDate: {
-          gte: currentMonthStart,
-          lte: currentMonthEnd,
+    // Current month transactions
+    const currentMonthTransactions = await db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          gte(transactions.transactionDate, currentMonthStart),
+          lte(transactions.transactionDate, currentMonthEnd),
+        ),
+      );
+
+    // Previous month transactions
+    const previousMonthTransactions = await db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          gte(transactions.transactionDate, previousMonthStart),
+          lte(transactions.transactionDate, previousMonthEnd),
+        ),
+      );
+
+    // Active brands
+    const activeBrands = await db
+      .select()
+      .from(brands)
+      .where(eq(brands.isActive, true));
+
+    // For each brand, fetch their current month transactions
+    const brandsWithTransactions = await Promise.all(
+      activeBrands.map(async (brand) => {
+        const brandTransactions = await db
+          .select()
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.brandId, brand.id),
+              gte(transactions.transactionDate, currentMonthStart),
+            ),
+          );
+        return { ...brand, transactions: brandTransactions };
+      }),
+    );
+
+    // Recent transactions with joins
+    const recentTransactionsRaw = await db
+      .select({
+        id: transactions.id,
+        brandId: transactions.brandId,
+        projectId: transactions.projectId,
+        type: transactions.type,
+        usdValue: transactions.usdValue,
+        transactionDate: transactions.transactionDate,
+        description: transactions.description,
+        source: transactions.source,
+        originalCurrency: transactions.originalCurrency,
+        originalAmount: transactions.originalAmount,
+        conversionRate: transactions.conversionRate,
+        reference: transactions.reference,
+        notes: transactions.notes,
+        createdAt: transactions.createdAt,
+        brand: {
+          id: brands.id,
+          name: brands.name,
         },
-      },
-    });
-
-    const previousMonthTransactions = await db.transaction.findMany({
-      where: {
-        transactionDate: {
-          gte: previousMonthStart,
-          lte: previousMonthEnd,
+        project: {
+          id: projects.id,
+          name: projects.name,
         },
-      },
-    });
-
-    const brands = await db.brand.findMany({
-      where: { isActive: true },
-      include: {
-        transactions: {
-          where: {
-            transactionDate: {
-              gte: currentMonthStart,
-            },
-          },
+        createdBy: {
+          id: users.id,
+          name: users.name,
         },
-      },
-    });
+      })
+      .from(transactions)
+      .leftJoin(brands, eq(transactions.brandId, brands.id))
+      .leftJoin(projects, eq(transactions.projectId, projects.id))
+      .leftJoin(users, eq(transactions.createdById, users.id))
+      .orderBy(desc(transactions.transactionDate))
+      .limit(10);
 
-    const recentTransactions = await db.transaction.findMany({
-      take: 10,
-      orderBy: { transactionDate: "desc" },
-      include: {
-        brand: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
-    });
+    // Convert decimal strings to numbers
+    const recentTransactions = recentTransactionsRaw.map((t) => ({
+      ...t,
+      originalAmount: Number(t.originalAmount),
+      conversionRate: Number(t.conversionRate),
+      usdValue: Number(t.usdValue),
+    }));
 
-    // Calculate current month totals
     const currentRevenue = currentMonthTransactions
       .filter((t) => t.type === "INCOME")
       .reduce((sum, t) => sum + Number(t.usdValue), 0);
@@ -94,7 +142,7 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
           : 0;
 
     // Revenue by brand
-    const revenueByBrand = brands.map((brand) => {
+    const revenueByBrand = brandsWithTransactions.map((brand) => {
       const brandTransactions = brand.transactions;
       const revenue = brandTransactions
         .filter((t) => t.type === "INCOME")
@@ -112,21 +160,22 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
       };
     });
 
-    // Monthly data for charts (last 6 months) - sequential queries due to Neon HTTP limitations
+    // Monthly data for charts (last 6 months)
     const monthlyTransactionsResults = [];
     for (let i = 5; i >= 0; i--) {
       const monthDate = subMonths(now, i);
       const monthStart = startOfMonth(monthDate);
       const monthEnd = endOfMonth(monthDate);
 
-      const monthTransactions = await db.transaction.findMany({
-        where: {
-          transactionDate: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      });
+      const monthTransactions = await db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            gte(transactions.transactionDate, monthStart),
+            lte(transactions.transactionDate, monthEnd),
+          ),
+        );
       monthlyTransactionsResults.push(monthTransactions);
     }
 
@@ -157,7 +206,7 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
       revenueChange,
       expenseChange,
       revenueByBrand,
-      recentTransactions: recentTransactions as any,
+      recentTransactions,
       monthlyData,
     };
   } catch (error) {

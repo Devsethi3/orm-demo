@@ -54,7 +54,7 @@ export function TransactionsTable({
       !searchQuery ||
       t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.reference?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.brand.name.toLowerCase().includes(searchQuery.toLowerCase());
+      t.brand?.name.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesType = typeFilter === "all" || t.type === typeFilter;
 
@@ -153,7 +153,7 @@ export function TransactionsTable({
                       <span>{transaction.description || "-"}</span>
                     </div>
                   </TableCell>
-                  <TableCell>{transaction.brand.name}</TableCell>
+                  <TableCell>{transaction.brand?.name || "-"}</TableCell>
                   <TableCell>{getTypeBadge(transaction.type)}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{transaction.source}</Badge>

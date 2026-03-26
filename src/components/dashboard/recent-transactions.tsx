@@ -68,7 +68,7 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         <span className="hidden sm:inline">
-                          {transaction.brand.name} •{" "}
+                          {transaction.brand?.name || "-"} •{" "}
                         </span>
                         {formatDate(transaction.transactionDate)}
                       </p>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { users as usersTable } from "@/db/schema";
+import { desc } from "drizzle-orm";
 import type { UserWithRelations } from "@/types";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -12,18 +13,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json([], { status: 403 });
     }
 
-    const usersList = await db.query.users.findMany({
-      columns: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        lastLoginAt: true,
-        createdAt: true,
-      },
-      orderBy: (users, { desc }) => [desc(users.createdAt)],
-    });
+    const usersList = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: usersTable.role,
+        status: usersTable.status,
+        lastLoginAt: usersTable.lastLoginAt,
+        createdAt: usersTable.createdAt,
+      })
+      .from(usersTable)
+      .orderBy(desc(usersTable.createdAt));
 
     return NextResponse.json(usersList as UserWithRelations[]);
   } catch (error) {

@@ -239,7 +239,7 @@ export function InvitesTable({ invites, brands }: InvitesTableProps) {
                   </TableCell>
                   <TableCell>{invite.brand?.name || "-"}</TableCell>
                   <TableCell>{getStatusBadge(invite.status)}</TableCell>
-                  <TableCell>{invite.invitedBy.name}</TableCell>
+                  <TableCell>{invite.invitedBy?.name || "-"}</TableCell>
                   <TableCell>
                     {invite.status === "PENDING"
                       ? formatDate(invite.expiresAt)

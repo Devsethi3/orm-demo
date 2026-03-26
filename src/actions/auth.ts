@@ -2,7 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { eq, and, gt } from "drizzle-orm";
 import db from "@/lib/db";
+import { users, invites, brandMembers, auditLogs } from "@/db/schema";
 import {
   hashPassword,
   verifyPassword,
@@ -50,9 +52,13 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
 
     const { email, password } = validated.data;
 
-    const user = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()))
+      .limit(1);
+
+    const user = result[0];
 
     if (!user) {
       return {
@@ -84,17 +90,17 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, 
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: user.id,
-        action: "LOGIN",
-        entityType: "USER",
-        entityId: user.id,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      action: "LOGIN",
+      entityType: "USER",
+      entityId: user.id,
+      createdAt: new Date(),
     });
 
     return { success: true };
@@ -146,9 +152,12 @@ export async function sendInvite(input: InviteInput): Promise<ActionResponse> {
 
     const { email, role, brandId } = validated.data;
 
-    const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const existingUserResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()))
+      .limit(1);
+    const existingUser = existingUserResult[0];
 
     if (existingUser) {
       return {
@@ -157,13 +166,18 @@ export async function sendInvite(input: InviteInput): Promise<ActionResponse> {
       };
     }
 
-    const existingInvite = await db.invite.findFirst({
-      where: {
-        email: email.toLowerCase(),
-        status: "PENDING",
-        expiresAt: { gt: new Date() },
-      },
-    });
+    const existingInviteResult = await db
+      .select()
+      .from(invites)
+      .where(
+        and(
+          eq(invites.email, email.toLowerCase()),
+          eq(invites.status, "PENDING"),
+          gt(invites.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+    const existingInvite = existingInviteResult[0];
 
     if (existingInvite) {
       return {
@@ -174,34 +188,35 @@ export async function sendInvite(input: InviteInput): Promise<ActionResponse> {
 
     const token = generateToken(48);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const inviteId = crypto.randomUUID();
 
-    const invite = await db.invite.create({
-      data: {
-        email: email.toLowerCase(),
-        role,
-        token,
-        expiresAt,
-        invitedById: session.user.id,
-        brandId: brandId || null,
-      },
+    await db.insert(invites).values({
+      id: inviteId,
+      email: email.toLowerCase(),
+      role,
+      token,
+      expiresAt,
+      invitedById: session.user.id,
+      brandId: brandId || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     // Todo: send email with invite link here
     console.log(`\nInvite link: ${getAppBaseUrl()}/invite/${token}\n`);
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "INVITE_SENT",
-        entityType: "INVITE",
-        entityId: invite.id,
-        newData: { email, role },
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "INVITE_SENT",
+      entityType: "INVITE",
+      entityId: inviteId,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/invites");
 
-    return { success: true, data: { inviteId: invite.id, token } };
+    return { success: true, data: { inviteId, token } };
   } catch (error) {
     console.error("Send invite error:", error);
     return {
@@ -229,9 +244,12 @@ export async function acceptInvite(
 
     const { token, name, password } = validated.data;
 
-    const invite = await db.invite.findUnique({
-      where: { token },
-    });
+    const inviteResult = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.token, token))
+      .limit(1);
+    const invite = inviteResult[0];
 
     if (!invite) {
       return { success: false, error: "Invalid invite link" };
@@ -245,46 +263,48 @@ export async function acceptInvite(
     }
 
     if (invite.expiresAt < new Date()) {
-      await db.invite.update({
-        where: { id: invite.id },
-        data: { status: "EXPIRED" },
-      });
+      await db
+        .update(invites)
+        .set({ status: "EXPIRED" })
+        .where(eq(invites.id, invite.id));
       return { success: false, error: "This invite has expired" };
     }
 
     const passwordHash = await hashPassword(password);
+    const userId = crypto.randomUUID();
 
     // Create user with the role from invite
-    const user = await db.user.create({
-      data: {
-        name,
-        email: invite.email,
-        passwordHash,
-        role: invite.role, 
-        status: "ACTIVE",
-      },
+    await db.insert(users).values({
+      id: userId,
+      name,
+      email: invite.email,
+      passwordHash,
+      role: invite.role,
+      status: "ACTIVE",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     if (invite.brandId) {
-      await db.brandMember.create({
-        data: {
-          brandId: invite.brandId,
-          userId: user.id,
-          role: invite.role,
-        },
+      await db.insert(brandMembers).values({
+        id: crypto.randomUUID(),
+        brandId: invite.brandId,
+        userId: userId,
+        role: invite.role,
+        createdAt: new Date(),
       });
     }
 
-    await db.invite.update({
-      where: { id: invite.id },
-      data: {
+    await db
+      .update(invites)
+      .set({
         status: "ACCEPTED",
         acceptedAt: new Date(),
-      },
-    });
+      })
+      .where(eq(invites.id, invite.id));
 
     // Create session
-    const sessionToken = await createSession(user.id);
+    const sessionToken = await createSession(userId);
 
     const cookieStore = await cookies();
     cookieStore.set("session", sessionToken, {
@@ -295,13 +315,13 @@ export async function acceptInvite(
       path: "/",
     });
 
-    await db.auditLog.create({
-      data: {
-        userId: user.id,
-        action: "INVITE_ACCEPTED",
-        entityType: "INVITE",
-        entityId: invite.id,
-      },
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: userId,
+      action: "ACCEPT_INVITE",
+      entityType: "USER",
+      entityId: userId,
+      createdAt: new Date(),
     });
 
     return { success: true };
@@ -322,9 +342,13 @@ export async function revokeInvite(inviteId: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    const invite = await db.invite.findUnique({
-      where: { id: inviteId },
-    });
+    // ✅ Drizzle syntax
+    const inviteResult = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.id, inviteId))
+      .limit(1);
+    const invite = inviteResult[0];
 
     if (!invite) {
       return { success: false, error: "Invite not found" };
@@ -334,18 +358,20 @@ export async function revokeInvite(inviteId: string): Promise<ActionResponse> {
       return { success: false, error: "Only pending invites can be revoked" };
     }
 
-    await db.invite.update({
-      where: { id: inviteId },
-      data: { status: "REVOKED" },
-    });
+    // ✅ Drizzle syntax
+    await db
+      .update(invites)
+      .set({ status: "REVOKED", updatedAt: new Date() })
+      .where(eq(invites.id, inviteId));
 
-    await db.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "INVITE_REVOKED",
-        entityType: "INVITE",
-        entityId: inviteId,
-      },
+    // ✅ Drizzle syntax
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      action: "INVITE_REVOKED",
+      entityType: "INVITE",
+      entityId: inviteId,
+      createdAt: new Date(),
     });
 
     revalidatePath("/dashboard/invites");
@@ -365,9 +391,13 @@ export async function resendInvite(inviteId: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    const invite = await db.invite.findUnique({
-      where: { id: inviteId },
-    });
+    // ✅ Drizzle syntax
+    const inviteResult = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.id, inviteId))
+      .limit(1);
+    const invite = inviteResult[0];
 
     if (!invite || invite.status !== "PENDING") {
       return { success: false, error: "Invalid invite" };
@@ -376,13 +406,15 @@ export async function resendInvite(inviteId: string): Promise<ActionResponse> {
     const newToken = generateToken(48);
     const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await db.invite.update({
-      where: { id: inviteId },
-      data: {
+    // ✅ Drizzle syntax
+    await db
+      .update(invites)
+      .set({
         token: newToken,
         expiresAt: newExpiresAt,
-      },
-    });
+        updatedAt: new Date(),
+      })
+      .where(eq(invites.id, inviteId));
 
     // Todo: send email with invite link here
     console.log(`\nNew invite link: ${getAppBaseUrl()}/invite/${newToken}\n`);
