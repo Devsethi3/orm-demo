@@ -1,0 +1,30 @@
+name = "finance-crm"
+main = "wrangler.ts"
+type = "webpack"
+compatibility_date = "2024-12-16"
+compatibility_flags = ["nodejs_compat"]
+
+# Build configuration for Next.js on Cloudflare Workers
+build = { command = "npm run build" }
+
+env = {}
+
+# Environment variables - Define in Cloudflare dashboard Secrets
+[env.production]
+name = "finance-crm-prod"
+routes = [
+  { pattern = "finance-crm.pages.dev/*", zone_name = "pages.dev" }
+]
+
+[env.staging]
+name = "finance-crm-staging"
+
+# KV namespace for session storage (optional, for future caching)
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "YOUR_KV_NAMESPACE_ID"
+# preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+
+# Triggers and scheduled events (optional for future background jobs)
+# [[triggers.crons]]
+# crons = ["0 0 * * *"]
