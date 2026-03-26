@@ -219,7 +219,7 @@ export function SubscriptionsTable({ subscriptions }: SubscriptionsTableProps) {
                       {subscription.billingCycle}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-right font-semibold">
                     {formatCurrency(
                       Number(subscription.cost),
                       subscription.currency,

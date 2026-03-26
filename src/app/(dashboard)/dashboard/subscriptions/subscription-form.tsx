@@ -33,7 +33,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { SubscriptionWithDue } from "@/types";
 import { format } from "date-fns";
-import { BillingCycle } from "@/lib/types/enums";
+import { BillingCycle } from "@/generated/prisma/enums";
 
 interface SubscriptionFormProps {
   open: boolean;

@@ -137,9 +137,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
       </CardHeader>
 
       <CardContent className="pt-4">
-        <div style={{ height: "300px", minHeight: "300px", width: "100%" }}>
-          <ChartContainer config={chartConfig} className="h-full w-full">
-            <ComposedChart
+        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+          <ComposedChart
             data={data}
             margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
             barCategoryGap="20%"
@@ -229,7 +228,6 @@ export function RevenueChart({ data }: RevenueChartProps) {
             />
           </ComposedChart>
         </ChartContainer>
-        </div>
       </CardContent>
     </Card>
   );

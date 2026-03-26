@@ -4,14 +4,16 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import db from "./db";
 import type { UserRole, UserStatus } from "@/lib/types/enums";
-import { eq, and, lt } from "drizzle-orm";
-import { users, sessions } from "@/db/schema";
 
-const secret = new TextEncoder().encode(
-  process.env.BETTER_AUTH_SECRET || (() => {
-    throw new Error("BETTER_AUTH_SECRET environment variable is required");
-  })(),
-);
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+const secret = new TextEncoder().encode(getRequiredEnv("BETTER_AUTH_SECRET"));
 
 export interface SessionUser {
   id: string;
@@ -75,18 +77,21 @@ export async function createSession(
     "7d",
   );
 
-  await db.insert(sessions).values({
-    id: crypto.randomUUID(),
-    userId,
-    token,
-    expiresAt,
-    userAgent,
-    ipAddress,
-    createdAt: new Date(),
+  await db.session.create({
+    data: {
+      userId,
+      token,
+      expiresAt,
+      userAgent,
+      ipAddress,
+    },
   });
 
   // Update last login
-  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
+  await db.user.update({
+    where: { id: userId },
+    data: { lastLoginAt: new Date() },
+  });
 
   return token;
 }
@@ -101,45 +106,36 @@ export async function getSession(): Promise<Session | null> {
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    const result = await db
-      .select({
-        sessionId: sessions.id,
-        sessionToken: sessions.token,
-        expiresAt: sessions.expiresAt,
-        userId: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-        status: users.status,
-      })
-      .from(sessions)
-      .innerJoin(users, eq(sessions.userId, users.id))
-      .where(eq(sessions.token, token))
-      .limit(1);
+    const session = await db.session.findUnique({
+      where: { token },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+    });
 
-    if (!result || result.length === 0) return null;
-
-    const sessionRecord = result[0];
-
-    if (sessionRecord.expiresAt < new Date()) {
-      await db.delete(sessions).where(eq(sessions.token, token));
+    if (!session || session.expiresAt < new Date()) {
+      if (session) {
+        await db.session.delete({ where: { id: session.id } });
+      }
       return null;
     }
 
-    if (sessionRecord.status !== "ACTIVE") {
+    if (session.user.status !== "ACTIVE") {
       return null;
     }
 
     return {
-      user: {
-        id: sessionRecord.userId,
-        email: sessionRecord.email,
-        name: sessionRecord.name,
-        role: sessionRecord.role,
-        status: sessionRecord.status,
-      } as SessionUser,
-      token: sessionRecord.sessionToken,
-      expiresAt: sessionRecord.expiresAt,
+      user: session.user as SessionUser,
+      token: session.token,
+      expiresAt: session.expiresAt,
     };
   } catch (error) {
     console.error("Get session error:", error);
@@ -149,7 +145,9 @@ export async function getSession(): Promise<Session | null> {
 
 export async function invalidateSession(token: string): Promise<void> {
   try {
-    await db.delete(sessions).where(eq(sessions.token, token));
+    await db.session.deleteMany({
+      where: { token },
+    });
   } catch (error) {
     console.error("Invalidate session error:", error);
   }
@@ -157,7 +155,9 @@ export async function invalidateSession(token: string): Promise<void> {
 
 export async function invalidateAllUserSessions(userId: string): Promise<void> {
   try {
-    await db.delete(sessions).where(eq(sessions.userId, userId));
+    await db.session.deleteMany({
+      where: { userId },
+    });
   } catch (error) {
     console.error("Invalidate all sessions error:", error);
   }

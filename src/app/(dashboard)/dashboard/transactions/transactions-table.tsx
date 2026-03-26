@@ -1,3 +1,4 @@
+// src/app/(dashboard)/dashboard/transactions/transactions-table.tsx
 "use client";
 
 import { useState } from "react";

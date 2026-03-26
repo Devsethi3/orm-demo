@@ -2,20 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, hasPermission } from "@/lib/auth";
 import { brandSchema, type BrandInput } from "@/lib/validations";
 import { slugify } from "@/lib/utils";
 import type { ActionResponse } from "@/types";
-import { eq, sql } from "drizzle-orm";
-import {
-  brands,
-  brandMembers,
-  transactions,
-  auditLogs,
-  projects,
-  employees,
-  users,
-} from "@/db/schema";
+import { Prisma } from "@/generated/prisma/client";
 
 export async function createBrand(input: BrandInput): Promise<ActionResponse> {
   try {
@@ -40,48 +31,37 @@ export async function createBrand(input: BrandInput): Promise<ActionResponse> {
     const data = validated.data;
     let slug = slugify(data.name);
 
-    const existingSlugs = await db
-      .select()
-      .from(brands)
-      .where(eq(brands.slug, slug))
-      .limit(1);
-
-    if (existingSlugs.length > 0) {
+    const existingSlug = await db.brand.findUnique({ where: { slug } });
+    if (existingSlug) {
       slug = `${slug}-${Date.now()}`;
     }
 
-    const brandId = crypto.randomUUID();
-    const result = await db
-      .insert(brands)
-      .values({
-        id: brandId,
+    const brand = await db.brand.create({
+      data: {
         name: data.name,
         slug,
-        description: data.description || null,
+        description: data.description,
         logoUrl: data.logoUrl || null,
         ownerId: session.user.id,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
-
-    const brand = result[0];
-
-    await db.insert(brandMembers).values({
-      id: crypto.randomUUID(),
-      brandId: brand.id,
-      userId: session.user.id,
-      role: "ADMIN",
-      createdAt: new Date(),
+      },
     });
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "BRAND_CREATED",
-      entityType: "BRAND",
-      entityId: brand.id,
-      newData: JSON.stringify(data),
+    await db.brandMember.create({
+      data: {
+        brandId: brand.id,
+        userId: session.user.id,
+        role: "ADMIN",
+      },
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "BRAND_CREATED",
+        entityType: "BRAND",
+        entityId: brand.id,
+        newData: data as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard/brands");
@@ -98,65 +78,28 @@ export async function getBrands() {
 
   if (!session) return [];
 
-  const brandList = await db
-    .select({
-      id: brands.id,
-      name: brands.name,
-      slug: brands.slug,
-      description: brands.description,
-      logoUrl: brands.logoUrl,
-      isActive: brands.isActive,
-      createdAt: brands.createdAt,
-      updatedAt: brands.updatedAt,
-      ownerId: brands.ownerId,
-      owner: {
-        id: users.id,
-        name: users.name,
-        email: users.email,
-      },
-    })
-    .from(brands)
-    .innerJoin(users, eq(brands.ownerId, users.id))
-    .where(eq(brands.isActive, true));
+  const where: Prisma.BrandWhereInput = { isActive: true };
 
-  // Fetch counts for each brand
-  const brandsWithCounts = await Promise.all(
-    brandList.map(async (brand) => {
-      const txCountResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(transactions)
-        .where(eq(transactions.brandId, brand.id));
+  if (session.user.role !== "ADMIN") {
+    where.members = {
+      some: { userId: session.user.id },
+    };
+  }
 
-      const projectCountResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(projects)
-        .where(eq(projects.brandId, brand.id));
-
-      const employeeCountResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(employees)
-        .where(eq(employees.brandId, brand.id));
-
-      return {
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        description: brand.description,
-        logoUrl: brand.logoUrl,
-        isActive: brand.isActive,
-        createdAt: brand.createdAt,
-        updatedAt: brand.updatedAt,
-        owner: brand.owner,
-        _count: {
-          transactions: Number(txCountResult[0]?.count || 0),
-          projects: Number(projectCountResult[0]?.count || 0),
-          employees: Number(employeeCountResult[0]?.count || 0),
+  return db.brand.findMany({
+    where,
+    include: {
+      owner: { select: { id: true, name: true, email: true } },
+      _count: {
+        select: {
+          transactions: true,
+          projects: true,
+          employees: true,
         },
-      };
-    }),
-  );
-
-  return brandsWithCounts;
+      },
+    },
+    orderBy: { name: "asc" },
+  });
 }
 
 export async function getBrand(id: string) {
@@ -164,62 +107,18 @@ export async function getBrand(id: string) {
 
   if (!session) return null;
 
-  const brandData = await db
-    .select({
-      id: brands.id,
-      name: brands.name,
-      slug: brands.slug,
-      description: brands.description,
-      logoUrl: brands.logoUrl,
-      isActive: brands.isActive,
-      createdAt: brands.createdAt,
-      updatedAt: brands.updatedAt,
-      owner: {
-        id: users.id,
-        name: users.name,
-        email: users.email,
+  return db.brand.findUnique({
+    where: { id },
+    include: {
+      owner: { select: { id: true, name: true, email: true } },
+      _count: {
+        select: {
+          transactions: true,
+          projects: true,
+        },
       },
-    })
-    .from(brands)
-    .innerJoin(users, eq(brands.ownerId, users.id))
-    .where(eq(brands.id, id))
-    .limit(1);
-
-  if (!brandData || brandData.length === 0) return null;
-
-  const brand = brandData[0];
-
-  const txCountResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(transactions)
-    .where(eq(transactions.brandId, id));
-
-  const projectCountResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(projects)
-    .where(eq(projects.brandId, id));
-
-  const employeeCountResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(employees)
-    .where(eq(employees.brandId, id));
-
-  return {
-    id: brand.id,
-    name: brand.name,
-    slug: brand.slug,
-    description: brand.description,
-    logoUrl: brand.logoUrl,
-    isActive: brand.isActive,
-    createdAt: brand.createdAt,
-    updatedAt: brand.updatedAt,
-    owner: brand.owner,
-    _count: {
-      transactions: Number(txCountResult[0]?.count || 0),
-      projects: Number(projectCountResult[0]?.count || 0),
-      employees: Number(employeeCountResult[0]?.count || 0),
     },
-  };
+  });
 }
 
 export async function updateBrand(
@@ -233,41 +132,30 @@ export async function updateBrand(
       return { success: false, error: "Unauthorized" };
     }
 
-    const existing = await db
-      .select()
-      .from(brands)
-      .where(eq(brands.id, id))
-      .limit(1)
-      .then((result) => result[0]);
+    const existing = await db.brand.findUnique({ where: { id } });
 
     if (!existing) {
       return { success: false, error: "Brand not found" };
     }
 
-    const updateData: any = {};
-    if (input.name !== undefined) updateData.name = input.name;
-    if (input.description !== undefined) updateData.description = input.description;
-    if (input.logoUrl !== undefined) updateData.logoUrl = input.logoUrl;
+    const brand = await db.brand.update({
+      where: { id },
+      data: {
+        name: input.name,
+        description: input.description,
+        logoUrl: input.logoUrl || null,
+      },
+    });
 
-    const result = await db
-      .update(brands)
-      .set(updateData)
-      .where(eq(brands.id, id))
-      .returning();
-
-    const brand = result[0];
-
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "BRAND_UPDATED",
-      entityType: "BRAND",
-      entityId: id,
-      oldData: JSON.stringify({
-        name: existing.name,
-        description: existing.description,
-      }),
-      newData: JSON.stringify(updateData),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "BRAND_UPDATED",
+        entityType: "BRAND",
+        entityId: id,
+        oldData: existing as unknown as Prisma.JsonObject,
+        newData: input as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard/brands");
@@ -287,39 +175,34 @@ export async function deleteBrand(id: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    const brand = await db
-      .select()
-      .from(brands)
-      .where(eq(brands.id, id))
-      .limit(1)
-      .then((result) => result[0]);
+    const brand = await db.brand.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { transactions: true } },
+      },
+    });
 
     if (!brand) {
       return { success: false, error: "Brand not found" };
     }
 
-    const txCount = await db
-      .select({ id: transactions.id })
-      .from(transactions)
-      .where(eq(transactions.brandId, id))
-      .limit(1);
-
-    if (txCount.length > 0) {
+    if (brand._count.transactions > 0) {
       // Soft delete
-      await db
-        .update(brands)
-        .set({ isActive: false })
-        .where(eq(brands.id, id));
+      await db.brand.update({
+        where: { id },
+        data: { isActive: false },
+      });
     } else {
-      await db.delete(brands).where(eq(brands.id, id));
+      await db.brand.delete({ where: { id } });
     }
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "BRAND_DELETED",
-      entityType: "BRAND",
-      entityId: id,
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "BRAND_DELETED",
+        entityType: "BRAND",
+        entityId: id,
+      },
     });
 
     revalidatePath("/dashboard/brands");

@@ -9,8 +9,6 @@ import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { BrandRevenueChart } from "@/components/dashboard/brand-revenue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const dynamic = "force-dynamic";
-
 export default async function DashboardPage() {
   const session = await getSession();
 

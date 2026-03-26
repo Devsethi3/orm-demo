@@ -103,10 +103,7 @@ export function BrandRevenueChart({ data }: BrandRevenueChartProps) {
       </CardHeader>
 
       <CardContent className="pt-4">
-        <div 
-          className="w-full [&_.recharts-cartesian-axis-tick-value]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border"
-          style={{ height: "300px", minHeight: "300px" }}
-        >
+        <div className="h-[300px] w-full [&_.recharts-cartesian-axis-tick-value]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}

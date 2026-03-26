@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserRole } from "@/lib/types/enums";
+import { UserRole } from "@/generated/prisma/enums";
 
 interface Brand {
   id: string;

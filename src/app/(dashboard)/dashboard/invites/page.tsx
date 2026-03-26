@@ -1,8 +1,6 @@
 import db from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { invites, brands as brandsTable, users as usersTable } from "@/db/schema";
 import { PageHeader } from "@/components/layout/page-header";
 import { InvitesTable } from "./invites-table";
 
@@ -13,63 +11,23 @@ export default async function InvitesPage() {
     redirect("/dashboard");
   }
 
-  const invitesList = await db
-    .select({
-      id: invites.id,
-      email: invites.email,
-      role: invites.role,
-      token: invites.token,
-      status: invites.status,
-      expiresAt: invites.expiresAt,
-      invitedById: invites.invitedById,
-      brandId: invites.brandId,
-      acceptedAt: invites.acceptedAt,
-      createdAt: invites.createdAt,
-      updatedAt: invites.updatedAt,
-      invitedById_: usersTable.id,
-      invitedByName: usersTable.name,
-      brandId_: brandsTable.id,
-      brandName: brandsTable.name,
-    })
-    .from(invites)
-    .innerJoin(usersTable, eq(invites.invitedById, usersTable.id))
-    .leftJoin(brandsTable, eq(invites.brandId, brandsTable.id))
-    .orderBy(invites.createdAt);
-
-  // Transform to match InviteWithRelations type
-  const formattedInvites = invitesList.map((inv) => ({
-    id: inv.id,
-    email: inv.email,
-    role: inv.role,
-    token: inv.token,
-    status: inv.status,
-    expiresAt: inv.expiresAt,
-    invitedById: inv.invitedById,
-    brandId: inv.brandId,
-    acceptedAt: inv.acceptedAt,
-    createdAt: inv.createdAt,
-    updatedAt: inv.updatedAt,
-    invitedBy: {
-      id: inv.invitedById_!,
-      name: inv.invitedByName!,
+  const invites = await db.invite.findMany({
+    include: {
+      invitedBy: { select: { id: true, name: true, email: true } },
+      brand: { select: { id: true, name: true } },
     },
-    brand: inv.brandId_
-      ? {
-          id: inv.brandId_,
-          name: inv.brandName!,
-        }
-      : null,
-  }));
+    orderBy: { createdAt: "desc" },
+  });
 
-  const brandsList = await db
-    .select({ id: brandsTable.id, name: brandsTable.name })
-    .from(brandsTable)
-    .where(eq(brandsTable.isActive, true));
+  const brands = await db.brand.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  });
 
   return (
     <div className="space-y-6">
       <PageHeader title="Invites" description="Manage user invitations" />
-      <InvitesTable invites={formattedInvites as any} brands={brandsList} />
+      <InvitesTable invites={invites as any} brands={brands} />
     </div>
   );
 }

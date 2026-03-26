@@ -239,7 +239,7 @@ export function EmployeeForm({
           </div>
 
           <div className="space-y-2">
-            <Label>Join Date</Label>
+            <Label>Join Date *</Label>
             <Input
               type="date"
               {...register("joinDate", { valueAsDate: true })}

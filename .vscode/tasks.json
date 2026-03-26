@@ -1,0 +1,65 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build project",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Find stale next build",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'next build' } | Select-Object ProcessId, Name, CommandLine | Format-List"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "List node processes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' } | Select-Object ProcessId, CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "List node via wmic",
+			"type": "shell",
+			"command": "wmic",
+			"args": [
+				"process",
+				"where",
+				"name='node.exe'",
+				"get",
+				"ProcessId,CommandLine"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Clean lint and build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"lint"
+			]
+		},
+		{
+			"label": "Production build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			]
+		}
+	]
+}

@@ -1,8 +1,6 @@
 // src/lib/currency.server.ts
 // This file contains server-only code - DO NOT import in client components
-import db from "./db";
-import { eq, or, is, isNull, gte, and, sql } from "drizzle-orm";
-import { currencies, exchangeRates } from "@/db/schema";
+import  db  from "./db";
 
 export interface ExchangeRateData {
   from: string;
@@ -19,38 +17,19 @@ export async function getExchangeRateFromDB(
   from: string,
   to: string,
 ): Promise<number | null> {
-  const fromCurrencyResult = await db
-    .select()
-    .from(currencies)
-    .where(eq(currencies.code, from))
-    .limit(1);
-
-  const toCurrencyResult = await db
-    .select()
-    .from(currencies)
-    .where(eq(currencies.code, to))
-    .limit(1);
-
-  const fromCurrency = fromCurrencyResult[0];
-  const toCurrency = toCurrencyResult[0];
+  const fromCurrency = await db.currency.findUnique({ where: { code: from } });
+  const toCurrency = await db.currency.findUnique({ where: { code: to } });
 
   if (fromCurrency && toCurrency) {
-    const dbRateResult = await db
-      .select()
-      .from(exchangeRates)
-      .where(
-        and(
-          eq(exchangeRates.fromCurrencyId, fromCurrency.id),
-          eq(exchangeRates.toCurrencyId, toCurrency.id),
-          or(
-            isNull(exchangeRates.validTo),
-            gte(exchangeRates.validTo as any, new Date()),
-          ),
-        ),
-      )
-      .limit(1);
+    const dbRate = await db.exchangeRate.findFirst({
+      where: {
+        fromCurrencyId: fromCurrency.id,
+        toCurrencyId: toCurrency.id,
+        OR: [{ validTo: null }, { validTo: { gte: new Date() } }],
+      },
+      orderBy: { validFrom: "desc" },
+    });
 
-    const dbRate = dbRateResult[0];
     if (dbRate) {
       return Number(dbRate.rate);
     }
@@ -68,7 +47,9 @@ export async function fetchExternalRate(
     "https://api.exchangerate-api.com/v4/latest";
 
   try {
-    const response = await fetch(`${apiUrl}/${from}`);
+    const response = await fetch(`${apiUrl}/${from}`, {
+      next: { revalidate: 300 }, // Cache for 5 minutes
+    });
 
     if (!response.ok) {
       throw new Error("Failed to fetch exchange rate");

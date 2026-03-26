@@ -1,8 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import db from "@/lib/db";
-import { desc } from "drizzle-orm";
-import { currencies, exchangeRates } from "@/db/schema";
 import { PageHeader } from "@/components/layout/page-header";
 import { SettingsTabs } from "./settings-tabs";
 
@@ -13,16 +11,18 @@ export default async function SettingsPage() {
     redirect("/dashboard");
   }
 
-  const currenciesList = await db
-    .select()
-    .from(currencies)
-    .orderBy(currencies.code);
+  const currencies = await db.currency.findMany({
+    orderBy: { code: "asc" },
+  });
 
-  const exchangeRatesList = await db
-    .select()
-    .from(exchangeRates)
-    .orderBy(desc(exchangeRates.validFrom))
-    .limit(20);
+  const exchangeRates = await db.exchangeRate.findMany({
+    include: {
+      fromCurrency: true,
+      toCurrency: true,
+    },
+    orderBy: { validFrom: "desc" },
+    take: 20,
+  });
 
   return (
     <div className="space-y-6">
@@ -31,8 +31,8 @@ export default async function SettingsPage() {
         description="Manage system settings and configurations"
       />
       <SettingsTabs
-        currencies={currenciesList as any}
-        exchangeRates={exchangeRatesList as any}
+        currencies={currencies}
+        exchangeRates={exchangeRates}
         currentUser={{
           id: session.user.id,
           name: session.user.name,

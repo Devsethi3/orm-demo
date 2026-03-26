@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
 import { getSession, invalidateAllUserSessions } from "@/lib/auth";
 import type { ActionResponse, UserWithRelations } from "@/types";
-import { UserRole, UserStatus } from "@/lib/types/enums";
-import { eq, count, desc } from "drizzle-orm";
-import { users as usersTable, auditLogs, transactions, brandMembers, brands } from "@/db/schema";
+import { UserRole, UserStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import {
   updateProfileNameSchema,
   type UpdateProfileNameInput,
@@ -19,37 +18,23 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     return [];
   }
 
-  const users = await db
-    .select({
-      id: usersTable.id,
-      name: usersTable.name,
-      email: usersTable.email,
-      role: usersTable.role,
-      status: usersTable.status,
-      lastLoginAt: usersTable.lastLoginAt,
-      createdAt: usersTable.createdAt,
-    })
-    .from(usersTable)
-    .orderBy(desc(usersTable.createdAt));
+  const users = await db.user.findMany({
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      status: true,
+      lastLoginAt: true,
+      createdAt: true,
+      _count: {
+        select: { transactions: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
-  // Get transaction count for each user
-  const usersWithCounts = await Promise.all(
-    users.map(async (user) => {
-      const transactionCount = await db
-        .select({ count: count() })
-        .from(transactions)
-        .where(eq(transactions.createdById, user.id));
-
-      return {
-        ...user,
-        _count: {
-          transactions: transactionCount[0]?.count || 0,
-        },
-      };
-    })
-  );
-
-  return usersWithCounts as UserWithRelations[];
+  return users as UserWithRelations[];
 }
 
 export async function getUser(id: string) {
@@ -59,53 +44,26 @@ export async function getUser(id: string) {
     return null;
   }
 
-  const user = await db
-    .select({
-      id: usersTable.id,
-      name: usersTable.name,
-      email: usersTable.email,
-      role: usersTable.role,
-      status: usersTable.status,
-      lastLoginAt: usersTable.lastLoginAt,
-      createdAt: usersTable.createdAt,
-    })
-    .from(usersTable)
-    .where(eq(usersTable.id, id))
-    .limit(1);
-
-  if (!user.length) {
-    return null;
-  }
-
-  // Get brand members with brand info
-  const userBrandMembers = await db
-    .select({
-      id: brandMembers.id,
-      brandId: brandMembers.brandId,
-      userId: brandMembers.userId,
-      role: brandMembers.role,
-      brand: {
-        id: brands.id,
-        name: brands.name,
+  return db.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      status: true,
+      lastLoginAt: true,
+      createdAt: true,
+      brandMembers: {
+        include: {
+          brand: { select: { id: true, name: true } },
+        },
       },
-    })
-    .from(brandMembers)
-    .leftJoin(brands, eq(brandMembers.brandId, brands.id))
-    .where(eq(brandMembers.userId, id));
-
-  // Get transaction count
-  const transactionCount = await db
-    .select({ count: count() })
-    .from(transactions)
-    .where(eq(transactions.createdById, id));
-
-  return {
-    ...user[0],
-    brandMembers: userBrandMembers,
-    _count: {
-      transactions: transactionCount[0]?.count || 0,
+      _count: {
+        select: { transactions: true },
+      },
     },
-  };
+  });
 }
 
 export async function updateUserRole(
@@ -123,29 +81,26 @@ export async function updateUserRole(
       return { success: false, error: "Cannot change your own role" };
     }
 
-    const existingUser = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, userId))
-      .limit(1);
+    const user = await db.user.findUnique({ where: { id: userId } });
 
-    if (!existingUser.length) {
+    if (!user) {
       return { success: false, error: "User not found" };
     }
 
-    const user = existingUser[0];
+    await db.user.update({
+      where: { id: userId },
+      data: { role },
+    });
 
-    await db.update(usersTable).set({ role }).where(eq(usersTable.id, userId));
-
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "USER_ROLE_UPDATED",
-      entityType: "USER",
-      entityId: userId,
-      oldData: { role: user.role },
-      newData: { role },
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "USER_ROLE_UPDATED",
+        entityType: "USER",
+        entityId: userId,
+        oldData: { role: user.role } as unknown as Prisma.JsonObject,
+        newData: { role } as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard/users");
@@ -172,37 +127,31 @@ export async function updateUserStatus(
       return { success: false, error: "Cannot change your own status" };
     }
 
-    const existingUser = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, userId))
-      .limit(1);
+    const user = await db.user.findUnique({ where: { id: userId } });
 
-    if (!existingUser.length) {
+    if (!user) {
       return { success: false, error: "User not found" };
     }
 
-    const user = existingUser[0];
-
-    await db
-      .update(usersTable)
-      .set({ status })
-      .where(eq(usersTable.id, userId));
+    await db.user.update({
+      where: { id: userId },
+      data: { status },
+    });
 
     // Invalidate sessions if suspending
     if (status === "SUSPENDED") {
       await invalidateAllUserSessions(userId);
     }
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "USER_STATUS_UPDATED",
-      entityType: "USER",
-      entityId: userId,
-      oldData: { status: user.status },
-      newData: { status },
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "USER_STATUS_UPDATED",
+        entityType: "USER",
+        entityId: userId,
+        oldData: { status: user.status } as unknown as Prisma.JsonObject,
+        newData: { status } as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard/users");
@@ -226,47 +175,38 @@ export async function deleteUser(userId: string): Promise<ActionResponse> {
       return { success: false, error: "Cannot delete your own account" };
     }
 
-    const users = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, userId))
-      .limit(1);
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      include: {
+        _count: { select: { transactions: true } },
+      },
+    });
 
-    if (!users.length) {
+    if (!user) {
       return { success: false, error: "User not found" };
     }
-
-    const user = users[0];
 
     // Invalidate all sessions
     await invalidateAllUserSessions(userId);
 
-    // Get transaction count
-    const transactionCounts = await db
-      .select({ count: count() })
-      .from(transactions)
-      .where(eq(transactions.createdById, userId));
-
-    const transactionCount = transactionCounts[0]?.count || 0;
-
-    if (transactionCount > 0) {
+    if (user._count.transactions > 0) {
       // Soft delete - suspend the user
-      await db
-        .update(usersTable)
-        .set({ status: "SUSPENDED" })
-        .where(eq(usersTable.id, userId));
+      await db.user.update({
+        where: { id: userId },
+        data: { status: "SUSPENDED" },
+      });
     } else {
       // Hard delete
-      await db.delete(usersTable).where(eq(usersTable.id, userId));
+      await db.user.delete({ where: { id: userId } });
     }
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "USER_DELETED",
-      entityType: "USER",
-      entityId: userId,
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "USER_DELETED",
+        entityType: "USER",
+        entityId: userId,
+      },
     });
 
     revalidatePath("/dashboard/users");
@@ -302,36 +242,33 @@ export async function updateCurrentUserName(
 
     const { name } = validated.data;
 
-    const currentUsers = await db
-      .select({ id: usersTable.id, name: usersTable.name })
-      .from(usersTable)
-      .where(eq(usersTable.id, session.user.id))
-      .limit(1);
+    const currentUser = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, name: true },
+    });
 
-    if (!currentUsers.length) {
+    if (!currentUser) {
       return { success: false, error: "User not found" };
     }
-
-    const currentUser = currentUsers[0];
 
     if (currentUser.name === name) {
       return { success: true, data: { name } };
     }
 
-    await db
-      .update(usersTable)
-      .set({ name })
-      .where(eq(usersTable.id, session.user.id));
+    await db.user.update({
+      where: { id: session.user.id },
+      data: { name },
+    });
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "USER_NAME_UPDATED",
-      entityType: "USER",
-      entityId: session.user.id,
-      oldData: { name: currentUser.name },
-      newData: { name },
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "USER_NAME_UPDATED",
+        entityType: "USER",
+        entityId: session.user.id,
+        oldData: { name: currentUser.name } as unknown as Prisma.JsonObject,
+        newData: { name } as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard", "layout");

@@ -10,14 +10,13 @@ import type {
   FilterOptions,
   PaginatedResponse,
 } from "@/types";
-import { eq, and, gte, lte, desc, count } from "drizzle-orm";
-import { transactions, auditLogs, brands, projects, users as usersTable } from "@/db/schema";
+import { Prisma } from "@/generated/prisma/client";
 import { convertToUSD } from "@/lib/currency.server";
 
 function toSerializableTransaction<T extends {
-  originalAmount: string | number;
-  conversionRate: string | number;
-  usdValue: string | number;
+  originalAmount: Prisma.Decimal;
+  conversionRate: Prisma.Decimal;
+  usdValue: Prisma.Decimal;
 }>(transaction: T) {
   return {
     ...transaction,
@@ -52,7 +51,7 @@ export async function createTransaction(
     const data = validated.data;
 
     // Get conversion rate if not provided
-    let conversionRate = data.conversionRate || 1;
+    let conversionRate = data.conversionRate;
     let usdValue = data.originalAmount;
 
     if (data.originalCurrency !== "USD") {
@@ -60,45 +59,54 @@ export async function createTransaction(
         data.originalAmount,
         data.originalCurrency,
       );
-      conversionRate = conversion.conversionRate;
+      conversionRate = conversionRate || conversion.conversionRate;
       usdValue = data.originalAmount * conversionRate;
+    } else {
+      conversionRate = 1;
     }
 
-    const result = await db.insert(transactions).values({
-      id: crypto.randomUUID(),
-      brandId: data.brandId,
-      projectId: data.projectId || null,
-      type: data.type,
-      source: data.source,
-      description: data.description || null,
-      originalAmount: String(data.originalAmount),
-      originalCurrency: data.originalCurrency,
-      conversionRate: String(conversionRate),
-      usdValue: String(usdValue),
-      transactionDate: data.transactionDate,
-      reference: data.reference || null,
-      notes: data.notes || null,
-      createdById: session.user.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }).returning();
+    const transaction = await db.$transaction(async (tx) => {
+      // Create transaction
+      const newTransaction = await tx.transaction.create({
+        data: {
+          brandId: data.brandId,
+          projectId: data.projectId || null,
+          type: data.type,
+          source: data.source,
+          description: data.description,
+          originalAmount: data.originalAmount,
+          originalCurrency: data.originalCurrency,
+          conversionRate,
+          usdValue,
+          transactionDate: data.transactionDate,
+          reference: data.reference,
+          notes: data.notes,
+          createdById: session.user.id,
+        },
+        include: {
+          brand: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+        },
+      });
 
-    const newTransaction = result[0];
+      return newTransaction;
+    });
 
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "TRANSACTION_CREATED",
-      entityType: "TRANSACTION",
-      entityId: newTransaction.id,
-      newData: { ...data },
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "TRANSACTION_CREATED",
+        entityType: "TRANSACTION",
+        entityId: transaction.id,
+        newData: data as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/transactions");
 
-    return { success: true, data: toSerializableTransaction(newTransaction) };
+    return { success: true, data: toSerializableTransaction(transaction) };
   } catch (error) {
     console.error("Create transaction error:", error);
     return { success: false, error: "Failed to create transaction" };
@@ -125,96 +133,53 @@ export async function getTransactions(
     search,
   } = options;
 
-  const filters: any[] = [];
+  const where: Prisma.TransactionWhereInput = {};
 
-  if (brandId) {
-    filters.push(eq(transactions.brandId, brandId));
+  if (brandId) where.brandId = brandId;
+  if (type) where.type = type;
+  if (source) where.source = source;
+  if (startDate || endDate) {
+    where.transactionDate = {};
+    if (startDate) where.transactionDate.gte = startDate;
+    if (endDate) where.transactionDate.lte = endDate;
   }
-  if (type) {
-    filters.push(eq(transactions.type, type));
-  }
-  if (source) {
-    filters.push(eq(transactions.source, source));
-  }
-  if (startDate) {
-    filters.push(gte(transactions.transactionDate, startDate));
-  }
-  if (endDate) {
-    filters.push(lte(transactions.transactionDate, endDate));
+  if (search) {
+    where.OR = [
+      { description: { contains: search, mode: "insensitive" } },
+      { reference: { contains: search, mode: "insensitive" } },
+      { notes: { contains: search, mode: "insensitive" } },
+    ];
   }
 
-  // Restrict by role - for partners, only show their brand's transactions
-  let finalFilters = filters.length > 0 ? and(...filters) : undefined;
+  // Restrict by role
   if (session.user.role === "PARTNER") {
-    // For now, return empty for partners since we don't have partner info
-    // In a real app, you'd look up the partner's brand
-    finalFilters = undefined;
+    const partner = await db.partner.findUnique({
+      where: { userId: session.user.id },
+    });
+    if (partner) {
+      where.brandId = partner.brandId;
+    }
   }
 
-  const [totalResult] = await db
-    .select({ count: count() })
-    .from(transactions)
-    .where(finalFilters);
-
-  const total = totalResult?.count || 0;
-
-  const txList = await db
-    .select({
-      id: transactions.id,
-      brandId: transactions.brandId,
-      projectId: transactions.projectId,
-      type: transactions.type,
-      source: transactions.source,
-      description: transactions.description,
-      originalAmount: transactions.originalAmount,
-      originalCurrency: transactions.originalCurrency,
-      conversionRate: transactions.conversionRate,
-      usdValue: transactions.usdValue,
-      transactionDate: transactions.transactionDate,
-      reference: transactions.reference,
-      notes: transactions.notes,
-      createdById: transactions.createdById,
-      createdAt: transactions.createdAt,
-      updatedAt: transactions.updatedAt,
-      brandName: brands.name,
-      brandId_: brands.id,
-      projectName: projects.name,
-      projectId_: projects.id,
-      createdByName: usersTable.name,
-      createdById_: usersTable.id,
-    })
-    .from(transactions)
-    .leftJoin(brands, eq(transactions.brandId, brands.id))
-    .leftJoin(projects, eq(transactions.projectId, projects.id))
-    .leftJoin(usersTable, eq(transactions.createdById, usersTable.id))
-    .where(finalFilters)
-    .orderBy(desc(transactions.transactionDate))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
-
-  const formattedData = txList.map((tx) => ({
-    ...tx,
-    originalAmount: Number(tx.originalAmount),
-    conversionRate: Number(tx.conversionRate),
-    usdValue: Number(tx.usdValue),
-    brand: {
-      id: tx.brandId_,
-      name: tx.brandName || "Unknown",
-    },
-    project: tx.projectId_
-      ? {
-          id: tx.projectId_,
-          name: tx.projectName || "Unknown",
-        }
-      : null,
-    createdBy: {
-      id: tx.createdById_,
-      name: tx.createdByName || "Unknown",
-    },
-  }));
+  const [transactions, total] = await Promise.all([
+    db.transaction.findMany({
+      where,
+      include: {
+        brand: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: { transactionDate: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    db.transaction.count({ where }),
+  ]);
 
   return {
-    data: formattedData as unknown as TransactionWithRelations[],
+    data: transactions.map((transaction) =>
+      toSerializableTransaction(transaction),
+    ) as unknown as TransactionWithRelations[],
     total,
     page,
     pageSize,
@@ -229,78 +194,22 @@ export async function getTransaction(
 
   if (!session) return null;
 
-  const result = await db
-    .select({
-      id: transactions.id,
-      brandId: transactions.brandId,
-      projectId: transactions.projectId,
-      type: transactions.type,
-      source: transactions.source,
-      description: transactions.description,
-      originalAmount: transactions.originalAmount,
-      originalCurrency: transactions.originalCurrency,
-      conversionRate: transactions.conversionRate,
-      usdValue: transactions.usdValue,
-      transactionDate: transactions.transactionDate,
-      reference: transactions.reference,
-      notes: transactions.notes,
-      createdById: transactions.createdById,
-      isReconciled: transactions.isReconciled,
-      createdAt: transactions.createdAt,
-      updatedAt: transactions.updatedAt,
-      brandId_: brands.id,
-      brandName: brands.name,
-      projectId_: projects.id,
-      projectName: projects.name,
-      createdById_: usersTable.id,
-      createdByName: usersTable.name,
-    })
-    .from(transactions)
-    .innerJoin(brands, eq(transactions.brandId, brands.id))
-    .leftJoin(projects, eq(transactions.projectId, projects.id))
-    .innerJoin(usersTable, eq(transactions.createdById, usersTable.id))
-    .where(eq(transactions.id, id))
-    .limit(1);
+  const transaction = await db.transaction.findUnique({
+    where: { id },
+    include: {
+      brand: { select: { id: true, name: true } },
+      project: { select: { id: true, name: true } },
+      createdBy: { select: { id: true, name: true } },
+    },
+  });
 
-  if (!result.length) {
+  if (!transaction) {
     return null;
   }
 
-  const tx = result[0];
-
-  return {
-    id: tx.id,
-    brandId: tx.brandId,
-    projectId: tx.projectId,
-    type: tx.type,
-    source: tx.source,
-    description: tx.description,
-    originalAmount: Number(tx.originalAmount),
-    originalCurrency: tx.originalCurrency,
-    conversionRate: Number(tx.conversionRate),
-    usdValue: Number(tx.usdValue),
-    transactionDate: tx.transactionDate,
-    reference: tx.reference,
-    notes: tx.notes,
-    createdById: tx.createdById,
-    isReconciled: tx.isReconciled,
-    createdAt: tx.createdAt,
-    updatedAt: tx.updatedAt,
-    brand: {
-      id: tx.brandId_!,
-      name: tx.brandName!,
-    },
-    project: tx.projectId_
-      ? {
-          id: tx.projectId_,
-          name: tx.projectName!,
-        }
-      : null,
-    createdBy: {
-      id: tx.createdById_!,
-      name: tx.createdByName!,
-    },
-  } as TransactionWithRelations;
+  return toSerializableTransaction(
+    transaction,
+  ) as unknown as TransactionWithRelations;
 }
 
 export async function updateTransaction(
@@ -314,89 +223,52 @@ export async function updateTransaction(
       return { success: false, error: "Unauthorized" };
     }
 
-    const existingResult = await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.id, id))
-      .limit(1);
+    const existing = await db.transaction.findUnique({
+      where: { id },
+    });
 
-    if (!existingResult.length) {
+    if (!existing) {
       return { success: false, error: "Transaction not found" };
     }
 
-    const existing = existingResult[0];
-
     // Recalculate USD value if amount or currency changed
-    const updateData: Record<string, any> = {};
+    let updateData: Prisma.TransactionUpdateInput = { ...input };
 
-    if (input.originalAmount !== undefined) {
-      updateData.originalAmount = String(input.originalAmount);
-    }
-    if (input.originalCurrency !== undefined) {
-      updateData.originalCurrency = input.originalCurrency;
-    }
-    if (input.description !== undefined) {
-      updateData.description = input.description;
-    }
-    if (input.reference !== undefined) {
-      updateData.reference = input.reference;
-    }
-    if (input.notes !== undefined) {
-      updateData.notes = input.notes;
-    }
-    if (input.type !== undefined) {
-      updateData.type = input.type;
-    }
-    if (input.source !== undefined) {
-      updateData.source = input.source;
-    }
-    if (input.projectId !== undefined) {
-      updateData.projectId = input.projectId;
-    }
-    if (input.transactionDate !== undefined) {
-      updateData.transactionDate = input.transactionDate;
-    }
-
-    // Recalculate conversion if amounts or currency changed
     if (input.originalAmount || input.originalCurrency) {
       const amount = input.originalAmount || Number(existing.originalAmount);
       const currency = input.originalCurrency || existing.originalCurrency;
 
       if (currency !== "USD") {
         const conversion = await convertToUSD(amount, currency);
-        updateData.conversionRate = String(
-          input.conversionRate || conversion.conversionRate,
-        );
-        updateData.usdValue = String(amount * Number(updateData.conversionRate));
+        updateData.conversionRate =
+          input.conversionRate || conversion.conversionRate;
+        updateData.usdValue = amount * Number(updateData.conversionRate);
       } else {
-        updateData.conversionRate = "1";
-        updateData.usdValue = String(amount);
+        updateData.conversionRate = 1;
+        updateData.usdValue = amount;
       }
     }
 
-    updateData.updatedAt = new Date();
+    const transaction = await db.transaction.update({
+      where: { id },
+      data: updateData,
+    });
 
-    const result = await db
-      .update(transactions)
-      .set(updateData)
-      .where(eq(transactions.id, id))
-      .returning();
-
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "TRANSACTION_UPDATED",
-      entityType: "TRANSACTION",
-      entityId: id,
-      oldData: existing,
-      newData: input,
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "TRANSACTION_UPDATED",
+        entityType: "TRANSACTION",
+        entityId: id,
+        oldData: existing as unknown as Prisma.JsonObject,
+        newData: input as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/transactions");
 
-    return { success: true, data: toSerializableTransaction(result[0]) };
+    return { success: true, data: toSerializableTransaction(transaction) };
   } catch (error) {
     console.error("Update transaction error:", error);
     return { success: false, error: "Failed to update transaction" };
@@ -411,28 +283,26 @@ export async function deleteTransaction(id: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    const existingResult = await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.id, id))
-      .limit(1);
+    const transaction = await db.transaction.findUnique({
+      where: { id },
+    });
 
-    if (!existingResult.length) {
+    if (!transaction) {
       return { success: false, error: "Transaction not found" };
     }
 
-    const transaction = existingResult[0];
+    await db.transaction.delete({
+      where: { id },
+    });
 
-    await db.delete(transactions).where(eq(transactions.id, id));
-
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "TRANSACTION_DELETED",
-      entityType: "TRANSACTION",
-      entityId: id,
-      oldData: transaction,
-      createdAt: new Date(),
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "TRANSACTION_DELETED",
+        entityType: "TRANSACTION",
+        entityId: id,
+        oldData: transaction as unknown as Prisma.JsonObject,
+      },
     });
 
     revalidatePath("/dashboard");

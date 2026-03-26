@@ -308,7 +308,7 @@ export function EmployeesTable({
                   <TableCell>
                     <Badge variant="outline">{employee.brand.name}</Badge>
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-right font-semibold">
                     {formatCurrency(
                       Number(employee.salaryAmount),
                       employee.salaryCurrency,

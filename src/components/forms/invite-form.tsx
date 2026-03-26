@@ -25,7 +25,7 @@ import {
 import { sendInvite } from "@/actions/auth";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { UserRole } from "@/lib/types/enums";
+import { UserRole } from "@/generated/prisma/client";
 
 interface InviteFormProps {
   open: boolean;

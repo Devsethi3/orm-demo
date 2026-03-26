@@ -19,7 +19,7 @@ export default async function BrandsPage() {
         title="Brands"
         description="Manage your brands and organizations"
       />
-      <BrandsGrid brands={brands as any} userRole={session.user.role} />
+      <BrandsGrid brands={brands} userRole={session.user.role} />
     </div>
   );
 }

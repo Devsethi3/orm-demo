@@ -21,8 +21,18 @@ import {
 import { generateToken } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import type { ActionResponse } from "@/types";
-import { eq } from "drizzle-orm";
-import { users, invites, brandMembers } from "@/db/schema";
+
+function getAppBaseUrl(): string {
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+
+  if (!appUrl) {
+    throw new Error(
+      "Missing APP_URL or NEXT_PUBLIC_APP_URL. Configure this for invite links.",
+    );
+  }
+
+  return appUrl;
+}
 
 export async function login(input: LoginInput): Promise<ActionResponse> {
   try {
@@ -40,13 +50,10 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
 
     const { email, password } = validated.data;
 
-    const foundUsers = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1);
+    const user = await db.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
 
-    const user = foundUsers[0];
     if (!user) {
       return {
         success: false,
@@ -77,8 +84,17 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 60 * 24 * 7, 
       path: "/",
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "LOGIN",
+        entityType: "USER",
+        entityId: user.id,
+      },
     });
 
     return { success: true };
@@ -130,32 +146,26 @@ export async function sendInvite(input: InviteInput): Promise<ActionResponse> {
 
     const { email, role, brandId } = validated.data;
 
-    const existingUsers = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1);
+    const existingUser = await db.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
 
-    if (existingUsers.length > 0) {
+    if (existingUser) {
       return {
         success: false,
         error: "A user with this email already exists",
       };
     }
 
-    const existingInvites = await db
-      .select()
-      .from(invites)
-      .where(eq(invites.email, email.toLowerCase()))
-      .limit(1);
+    const existingInvite = await db.invite.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        status: "PENDING",
+        expiresAt: { gt: new Date() },
+      },
+    });
 
-    const existingInvite = existingInvites[0];
-    if (
-      existingInvite &&
-      existingInvite.status === "PENDING" &&
-      existingInvite.expiresAt &&
-      existingInvite.expiresAt > new Date()
-    ) {
+    if (existingInvite) {
       return {
         success: false,
         error: "An active invite already exists for this email",
@@ -163,30 +173,35 @@ export async function sendInvite(input: InviteInput): Promise<ActionResponse> {
     }
 
     const token = generateToken(48);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    const newInvite = await db
-      .insert(invites)
-      .values({
-        id: crypto.randomUUID(),
+    const invite = await db.invite.create({
+      data: {
         email: email.toLowerCase(),
         role,
         token,
         expiresAt,
         invitedById: session.user.id,
         brandId: brandId || null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
+      },
+    });
 
-    console.log(
-      `\n📧 Invite link: ${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}\n`,
-    );
+    // Todo: send email with invite link here
+    console.log(`\nInvite link: ${getAppBaseUrl()}/invite/${token}\n`);
+
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "INVITE_SENT",
+        entityType: "INVITE",
+        entityId: invite.id,
+        newData: { email, role },
+      },
+    });
 
     revalidatePath("/dashboard/invites");
 
-    return { success: true, data: { inviteId: newInvite[0].id, token } };
+    return { success: true, data: { inviteId: invite.id, token } };
   } catch (error) {
     console.error("Send invite error:", error);
     return {
@@ -214,17 +229,13 @@ export async function acceptInvite(
 
     const { token, name, password } = validated.data;
 
-    const foundInvites = await db
-      .select()
-      .from(invites)
-      .where(eq(invites.token, token))
-      .limit(1);
+    const invite = await db.invite.findUnique({
+      where: { token },
+    });
 
-    if (!foundInvites || foundInvites.length === 0) {
+    if (!invite) {
       return { success: false, error: "Invalid invite link" };
     }
-
-    const invite = foundInvites[0];
 
     if (invite.status !== "PENDING") {
       return {
@@ -233,50 +244,46 @@ export async function acceptInvite(
       };
     }
 
-    if (invite.expiresAt && invite.expiresAt < new Date()) {
-      await db
-        .update(invites)
-        .set({ status: "EXPIRED" })
-        .where(eq(invites.id, invite.id));
+    if (invite.expiresAt < new Date()) {
+      await db.invite.update({
+        where: { id: invite.id },
+        data: { status: "EXPIRED" },
+      });
       return { success: false, error: "This invite has expired" };
     }
 
     const passwordHash = await hashPassword(password);
 
-    const newUser = await db
-      .insert(users)
-      .values({
-        id: crypto.randomUUID(),
-        email: invite.email,
+    // Create user with the role from invite
+    const user = await db.user.create({
+      data: {
         name,
+        email: invite.email,
         passwordHash,
-        role: invite.role,
+        role: invite.role, 
         status: "ACTIVE",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
-
-    const user = newUser[0];
+      },
+    });
 
     if (invite.brandId) {
-      await db.insert(brandMembers).values({
-        id: crypto.randomUUID(),
-        brandId: invite.brandId,
-        userId: user.id,
-        role: invite.role,
-        createdAt: new Date(),
+      await db.brandMember.create({
+        data: {
+          brandId: invite.brandId,
+          userId: user.id,
+          role: invite.role,
+        },
       });
     }
 
-    await db
-      .update(invites)
-      .set({
+    await db.invite.update({
+      where: { id: invite.id },
+      data: {
         status: "ACCEPTED",
         acceptedAt: new Date(),
-      })
-      .where(eq(invites.id, invite.id));
+      },
+    });
 
+    // Create session
     const sessionToken = await createSession(user.id);
 
     const cookieStore = await cookies();
@@ -286,6 +293,15 @@ export async function acceptInvite(
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "INVITE_ACCEPTED",
+        entityType: "INVITE",
+        entityId: invite.id,
+      },
     });
 
     return { success: true };
@@ -306,20 +322,38 @@ export async function revokeInvite(inviteId: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    await db
-      .update(invites)
-      .set({ status: "REVOKED" })
-      .where(eq(invites.id, inviteId));
+    const invite = await db.invite.findUnique({
+      where: { id: inviteId },
+    });
+
+    if (!invite) {
+      return { success: false, error: "Invite not found" };
+    }
+
+    if (invite.status !== "PENDING") {
+      return { success: false, error: "Only pending invites can be revoked" };
+    }
+
+    await db.invite.update({
+      where: { id: inviteId },
+      data: { status: "REVOKED" },
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: "INVITE_REVOKED",
+        entityType: "INVITE",
+        entityId: inviteId,
+      },
+    });
 
     revalidatePath("/dashboard/invites");
 
     return { success: true };
   } catch (error) {
     console.error("Revoke invite error:", error);
-    return {
-      success: false,
-      error: "Failed to revoke invite. Please try again.",
-    };
+    return { success: false, error: "Failed to revoke invite" };
   }
 }
 
@@ -331,13 +365,10 @@ export async function resendInvite(inviteId: string): Promise<ActionResponse> {
       return { success: false, error: "Unauthorized" };
     }
 
-    const foundInvites = await db
-      .select()
-      .from(invites)
-      .where(eq(invites.id, inviteId))
-      .limit(1);
+    const invite = await db.invite.findUnique({
+      where: { id: inviteId },
+    });
 
-    const invite = foundInvites[0];
     if (!invite || invite.status !== "PENDING") {
       return { success: false, error: "Invalid invite" };
     }
@@ -345,17 +376,16 @@ export async function resendInvite(inviteId: string): Promise<ActionResponse> {
     const newToken = generateToken(48);
     const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await db
-      .update(invites)
-      .set({
+    await db.invite.update({
+      where: { id: inviteId },
+      data: {
         token: newToken,
         expiresAt: newExpiresAt,
-      })
-      .where(eq(invites.id, inviteId));
+      },
+    });
 
-    console.log(
-      `\n📧 New invite link: ${process.env.NEXT_PUBLIC_APP_URL}/invite/${newToken}\n`,
-    );
+    // Todo: send email with invite link here
+    console.log(`\nNew invite link: ${getAppBaseUrl()}/invite/${newToken}\n`);
 
     revalidatePath("/dashboard/invites");
 

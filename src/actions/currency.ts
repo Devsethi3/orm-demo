@@ -1,10 +1,8 @@
 // src/actions/currency.ts
 "use server";
 
-import db from "@/lib/db";
+import db  from "@/lib/db";
 import { FALLBACK_RATES } from "@/lib/currency";
-import { eq } from "drizzle-orm";
-import { currencies, exchangeRates } from "@/db/schema";
 
 export async function fetchExchangeRate(
   from: string,
@@ -14,29 +12,25 @@ export async function fetchExchangeRate(
 
   try {
     // Try database first
-    const fromCurrencies = await db
-      .select()
-      .from(currencies)
-      .where(eq(currencies.code, from))
-      .limit(1);
-    const fromCurrency = fromCurrencies[0];
-
-    const toCurrencies = await db
-      .select()
-      .from(currencies)
-      .where(eq(currencies.code, to))
-      .limit(1);
-    const toCurrency = toCurrencies[0];
+    const fromCurrency = await db.currency.findUnique({
+      where: { code: from },
+    });
+    const toCurrency = await db.currency.findUnique({
+      where: { code: to },
+    });
 
     if (fromCurrency && toCurrency) {
-      const rates = await db
-        .select()
-        .from(exchangeRates)
-        .where(eq(exchangeRates.fromCurrencyId, fromCurrency.id))
-        .limit(1);
+      const dbRate = await db.exchangeRate.findFirst({
+        where: {
+          fromCurrencyId: fromCurrency.id,
+          toCurrencyId: toCurrency.id,
+          OR: [{ validTo: null }, { validTo: { gte: new Date() } }],
+        },
+        orderBy: { validFrom: "desc" },
+      });
 
-      if (rates.length > 0) {
-        return Number(rates[0].rate);
+      if (dbRate) {
+        return Number(dbRate.rate);
       }
     }
 
