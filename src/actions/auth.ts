@@ -45,7 +45,7 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
           success: false,
           error: "Request timeout - please try again",
         });
-      }, 8000); // 8 second timeout
+      }, 15000); // 15 second timeout (increased from 8s for serverless database latency)
     });
 
     const loginPromise = loginInternal(input);

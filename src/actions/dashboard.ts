@@ -20,7 +20,7 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
       setTimeout(() => {
         console.warn("getDashboardStats timeout - query took too long");
         resolve(null);
-      }, 8000); // 8 second timeout
+      }, 12000); // 12 second timeout (increased from 8s for serverless database latency)
     }),
   ]);
 }

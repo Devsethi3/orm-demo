@@ -170,7 +170,7 @@ export async function getSession(): Promise<Session | null> {
         setTimeout(() => {
           console.warn("getSession timeout - database query took too long");
           resolve(null);
-        }, 5000); // 5 second timeout
+        }, 12000); // 12 second timeout (increased from 5s for serverless database latency)
       }),
     ]);
 
