@@ -140,7 +140,7 @@ export async function getSession(): Promise<Session | null> {
     }
 
     // Extract expiration from JWT
-    const expiresAt = payload.exp ? new Date(payload.exp * 1000) : new Date();
+    const expiresAt = payload.exp ? new Date((payload.exp as number) * 1000) : new Date();
 
     return {
       user: {
