@@ -130,29 +130,97 @@ export async function getSession(): Promise<Session | null> {
 
     if (!token) return null;
 
-    // Verify JWT and extract user data from claims (no DB call!)
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    // Validate user status from JWT
-    if (payload.status !== "ACTIVE") {
-      return null;
-    }
+    // Use a race condition with timeout to prevent hanging on slow databases
+    // If database is slow, fall back to JWT claims (better than timeout)
+    const dbQueryPromise = (async () => {
+      try {
+        const result = await db
+          .select({
+            id: sessions.id,
+            token: sessions.token,
+            expiresAt: sessions.expiresAt,
+            userId: sessions.userId,
+            userId2: users.id,
+            email: users.email,
+            name: users.name,
+            role: users.role,
+            status: users.status,
+          })
+          .from(sessions)
+          .innerJoin(users, eq(sessions.userId, users.id))
+          .where(eq(sessions.token, token))
+          .limit(1);
 
-    // Extract expiration from JWT
-    const expiresAt = payload.exp ? new Date((payload.exp as number) * 1000) : new Date();
+        if (!result || result.length === 0) {
+          // Session not in database - it may have been invalidated
+          return null;
+        }
 
-    return {
-      user: {
-        id: payload.userId as string,
-        email: payload.email as string,
-        name: payload.name as string,
-        role: payload.role as UserRole,
-        status: payload.status as UserStatus,
-      },
-      token,
-      expiresAt,
-    };
+        const session = result[0];
+
+        if (session.expiresAt < new Date()) {
+          try {
+            await db.delete(sessions).where(eq(sessions.token, token));
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          return null;
+        }
+
+        if (session.status !== "ACTIVE") {
+          return null;
+        }
+
+        return {
+          user: {
+            id: session.userId2,
+            email: session.email,
+            name: session.name,
+            role: session.role as UserRole,
+            status: session.status as UserStatus,
+          },
+          token: session.token,
+          expiresAt: session.expiresAt,
+        };
+      } catch (dbError) {
+        console.error("getSession database error:", dbError);
+        // Fall back to JWT claims if database fails
+        return {
+          user: {
+            id: payload.userId as string,
+            email: payload.email as string,
+            name: payload.name as string,
+            role: payload.role as UserRole,
+            status: payload.status as UserStatus,
+          },
+          token,
+          expiresAt: payload.exp ? new Date((payload.exp as number) * 1000) : new Date(),
+        };
+      }
+    })();
+
+    // Set a timeout - if database doesn't respond in 5 seconds, use JWT claims
+    const timeoutPromise = new Promise<Session | null>((resolve) => {
+      setTimeout(() => {
+        console.warn("Database query timeout - falling back to JWT claims");
+        resolve({
+          user: {
+            id: payload.userId as string,
+            email: payload.email as string,
+            name: payload.name as string,
+            role: payload.role as UserRole,
+            status: payload.status as UserStatus,
+          },
+          token,
+          expiresAt: payload.exp ? new Date((payload.exp as number) * 1000) : new Date(),
+        });
+      }, 5000);
+    });
+
+    return Promise.race([dbQueryPromise, timeoutPromise]);
   } catch (error) {
     console.error("Session retrieval error:", error);
     return null;
