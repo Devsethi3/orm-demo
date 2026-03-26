@@ -13,12 +13,12 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
 
   if (!session) return null;
 
-  // Wrap with timeout to prevent Cloudflare hard timeout at 30s
+  // Wrap with timeout - 25 seconds max (buffer before Cloudflare hard limit)
   const timeoutPromise = new Promise<DashboardStats | null>((resolve) => {
     setTimeout(() => {
-      console.warn("Dashboard stats timeout - query took longer than 20 seconds");
+      console.warn("Dashboard stats timeout after 25 seconds - returning empty data");
       resolve(null);
-    }, 20000); // 20 second timeout
+    }, 25000);
   });
 
   const statsPromise = (async () => {

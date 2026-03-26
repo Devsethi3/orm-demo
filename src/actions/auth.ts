@@ -37,15 +37,15 @@ function getAppBaseUrl(): string {
 }
 
 export async function login(input: LoginInput): Promise<ActionResponse> {
-  // Add timeout protection - max 15 seconds
+  // Add timeout protection - max 25 seconds (buffer before Cloudflare's 30s hard limit)
   const timeoutPromise = new Promise<ActionResponse>((resolve) => {
     setTimeout(() => {
-      console.warn("Login action timeout - query exceeded 15 seconds");
+      console.warn("Login action timeout after 25 seconds");
       resolve({
         success: false,
         error: "Request timeout - please try again",
       });
-    }, 15000);
+    }, 25000);
   });
 
   const loginPromise = (async () => {
