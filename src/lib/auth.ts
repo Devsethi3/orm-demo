@@ -15,7 +15,10 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-const secret = new TextEncoder().encode(getRequiredEnv("BETTER_AUTH_SECRET"));
+// Get secret lazily (not at module load time)
+function getSecret(): Uint8Array {
+  return new TextEncoder().encode(getRequiredEnv("BETTER_AUTH_SECRET"));
+}
 
 export interface SessionUser {
   id: string;
@@ -48,6 +51,7 @@ export async function createToken(
   payload: Record<string, unknown>,
   expiresIn: string = "7d",
 ): Promise<string> {
+  const secret = getSecret();
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -59,6 +63,7 @@ export async function verifyToken(
   token: string,
 ): Promise<Record<string, unknown> | null> {
   try {
+    const secret = getSecret();
     const { payload } = await jwtVerify(token, secret);
     return payload as Record<string, unknown>;
   } catch {
@@ -106,12 +111,6 @@ export async function getSession(): Promise<Session | null> {
 
     const payload = await verifyToken(token);
     if (!payload) return null;
-
-    // Safely check if db is available
-    if (!db) {
-      console.error("Database not initialized");
-      return null;
-    }
 
     try {
       const result = await db

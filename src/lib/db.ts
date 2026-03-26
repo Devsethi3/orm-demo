@@ -7,6 +7,8 @@ const globalForDb = globalThis as typeof globalThis & {
   db?: ReturnType<typeof drizzle>;
 };
 
+let cachedDb: ReturnType<typeof drizzle> | null = null;
+
 function createDb() {
   const connectionString = process.env.DATABASE_URL;
 
@@ -28,16 +30,25 @@ function createDb() {
   }
 }
 
-let db: ReturnType<typeof drizzle> | null = null;
-
-try {
-  db = globalForDb.db ?? createDb();
-  if (process.env.NODE_ENV !== "production") {
-    globalForDb.db = db;
+// Initialize database lazily, not at module load
+function getDb(): ReturnType<typeof drizzle> {
+  if (cachedDb) return cachedDb;
+  
+  try {
+    cachedDb = globalForDb.db ?? createDb();
+    if (process.env.NODE_ENV !== "production") {
+      globalForDb.db = cachedDb;
+    }
+    return cachedDb;
+  } catch (error) {
+    console.error("Database initialization error:", error);
+    throw error;
   }
-} catch (error) {
-  console.error("Database initialization error:", error);
-  // Don't throw - let it fail gracefully on actual database access
 }
 
-export default db!;
+export default new Proxy({} as ReturnType<typeof drizzle>, {
+  get(target, prop) {
+    const db = getDb();
+    return (db as any)[prop];
+  },
+});
