@@ -24,7 +24,7 @@ function createDb() {
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
-function getDb(): ReturnType<typeof drizzle> {
+export function getDb(): ReturnType<typeof drizzle> {
   if (cachedDb) return cachedDb;
   cachedDb = globalForDb.db ?? createDb();
   if (process.env.NODE_ENV !== "production") {
@@ -33,12 +33,4 @@ function getDb(): ReturnType<typeof drizzle> {
   return cachedDb;
 }
 
-// Use a Proxy to lazily initialize the database only when accessed
-// This prevents blocking on Cloudflare Workers at module load time
-const lazyDb = new Proxy({} as ReturnType<typeof drizzle>, {
-  get(target, prop) {
-    return getDb()[prop as keyof typeof getDb];
-  },
-});
-
-export default lazyDb;
+export default getDb();
