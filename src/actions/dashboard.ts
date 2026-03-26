@@ -42,27 +42,11 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
         ),
       );
 
-    // Active brands
-    const activeBrands = await db
+    // Get all current month transactions (we'll aggregate by brand below)
+    const allCurrentTransactions = await db
       .select()
-      .from(brands)
-      .where(eq(brands.isActive, true));
-
-    // For each brand, fetch their current month transactions
-    const brandsWithTransactions = await Promise.all(
-      activeBrands.map(async (brand) => {
-        const brandTransactions = await db
-          .select()
-          .from(transactions)
-          .where(
-            and(
-              eq(transactions.brandId, brand.id),
-              gte(transactions.transactionDate, currentMonthStart),
-            ),
-          );
-        return { ...brand, transactions: brandTransactions };
-      }),
-    );
+      .from(transactions)
+      .where(gte(transactions.transactionDate, currentMonthStart));
 
     // Recent transactions with joins
     const recentTransactionsRaw = await db
@@ -141,63 +125,46 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
           ? 100
           : 0;
 
-    // Revenue by brand
-    const revenueByBrand = brandsWithTransactions.map((brand) => {
-      const brandTransactions = brand.transactions;
-      const revenue = brandTransactions
-        .filter((t) => t.type === "INCOME")
-        .reduce((sum, t) => sum + Number(t.usdValue), 0);
-      const expenses = brandTransactions
-        .filter((t) => t.type === "EXPENSE")
-        .reduce((sum, t) => sum + Number(t.usdValue), 0);
-
-      return {
-        brandId: brand.id,
-        brandName: brand.name,
-        revenue,
-        expenses,
-        profit: revenue - expenses,
-      };
+    // Revenue by brand - calculated from allCurrentTransactions
+    const brandMap = new Map<string, { id: string; name: string; revenue: number; expenses: number }>();
+    allCurrentTransactions.forEach((t) => {
+      if (t.brandId) {
+        const existing = brandMap.get(t.brandId) || {
+          id: t.brandId,
+          name: "",
+          revenue: 0,
+          expenses: 0,
+        };
+        if (t.type === "INCOME") {
+          existing.revenue += Number(t.usdValue);
+        } else {
+          existing.expenses += Number(t.usdValue);
+        }
+        brandMap.set(t.brandId, existing);
+      }
     });
 
-    // Monthly data for charts (last 6 months)
-    const monthlyTransactionsResults = [];
-    for (let i = 5; i >= 0; i--) {
-      const monthDate = subMonths(now, i);
-      const monthStart = startOfMonth(monthDate);
-      const monthEnd = endOfMonth(monthDate);
+    const revenueByBrand = Array.from(brandMap.values()).map((brand) => ({
+      brandId: brand.id,
+      brandName: brand.name || "Unknown",
+      revenue: brand.revenue,
+      expenses: brand.expenses,
+      profit: brand.revenue - brand.expenses,
+    }));
 
-      const monthTransactions = await db
-        .select()
-        .from(transactions)
-        .where(
-          and(
-            gte(transactions.transactionDate, monthStart),
-            lte(transactions.transactionDate, monthEnd),
-          ),
-        );
-      monthlyTransactionsResults.push(monthTransactions);
-    }
-
-    const monthlyData: MonthlyData[] = monthlyTransactionsResults.map(
-      (monthTransactions, index) => {
-        const monthDate = subMonths(now, 5 - index);
-
-        const revenue = monthTransactions
-          .filter((t) => t.type === "INCOME")
-          .reduce((sum, t) => sum + Number(t.usdValue), 0);
-
-        const expenses = monthTransactions
-          .filter((t) => t.type === "EXPENSE")
-          .reduce((sum, t) => sum + Number(t.usdValue), 0);
-
-        return {
-          month: format(monthDate, "MMM yyyy"),
-          revenue,
-          expenses,
-        };
+    // Monthly data - use only current and previous month
+    const monthlyData: MonthlyData[] = [
+      {
+        month: format(subMonths(now, 1), "MMM yyyy"),
+        revenue: previousRevenue,
+        expenses: previousExpenses,
       },
-    );
+      {
+        month: format(now, "MMM yyyy"),
+        revenue: currentRevenue,
+        expenses: currentExpenses,
+      },
+    ];
 
     return {
       totalRevenue: currentRevenue,
