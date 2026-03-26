@@ -126,42 +126,15 @@ export async function getPartners(): Promise<PartnerWithRelations[]> {
     partnersList = await db.select().from(partners);
   }
 
-  // Calculate earnings for each partner
-  const partnersWithEarnings = await Promise.all(
-    partnersList.map(async (partner) => {
-      const partnerTransactions = await db
-        .select()
-        .from(transactions)
-        .where(eq(transactions.brandId, partner.brandId));
-
-      const totalRevenue = partnerTransactions.reduce(
-        (sum, t) => sum + Number(t.usdValue),
-        0,
-      );
-      const totalEarnings = totalRevenue * (Number(partner.revenueShare) / 100);
-
-      const pendingWithdrawalsResult = await db
-        .select()
-        .from(withdrawals)
-        .where(eq(withdrawals.partnerId, partner.id));
-
-      const pendingAmount = pendingWithdrawalsResult.reduce(
-        (sum, w) => sum + Number(w.amount),
-        0,
-      );
-
-      return {
-        ...partner,
-        earnings: {
-          totalRevenue,
-          totalEarnings,
-          pendingWithdrawals: pendingAmount,
-        },
-      };
-    }),
-  );
-
-  return partnersWithEarnings as unknown as PartnerWithRelations[];
+  // Return without calculating earnings (too slow for Cloudflare)
+  return partnersList.map((partner) => ({
+    ...partner,
+    earnings: {
+      totalRevenue: 0,
+      totalEarnings: 0,
+      pendingWithdrawals: 0,
+    },
+  })) as unknown as PartnerWithRelations[];
 }
 
 export async function getPartner(id: string) {

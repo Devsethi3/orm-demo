@@ -89,7 +89,7 @@ export async function getBrands() {
 
   if (!session) return [];
 
-  // Fetch brands with owner info
+  // Single query - just get brands without counts
   const brandsList = await db
     .select({
       id: brands.id,
@@ -111,49 +111,13 @@ export async function getBrands() {
     .innerJoin(users, eq(brands.ownerId, users.id))
     .where(eq(brands.isActive, true));
 
-  // Get counts for each brand
-  const transactionCounts = await db
-    .select({
-      brandId: transactions.brandId,
-      count: count(),
-    })
-    .from(transactions)
-    .groupBy(transactions.brandId);
-
-  const projectCounts = await db
-    .select({
-      brandId: projects.brandId,
-      count: count(),
-    })
-    .from(projects)
-    .groupBy(projects.brandId);
-
-  const employeeCounts = await db
-    .select({
-      brandId: employees.brandId,
-      count: count(),
-    })
-    .from(employees)
-    .groupBy(employees.brandId);
-
-  // Create maps for easy lookup
-  const txCountMap = Object.fromEntries(
-    transactionCounts.map((tc) => [tc.brandId, Number(tc.count)]),
-  );
-  const projCountMap = Object.fromEntries(
-    projectCounts.map((pc) => [pc.brandId, Number(pc.count)]),
-  );
-  const empCountMap = Object.fromEntries(
-    employeeCounts.map((ec) => [ec.brandId, Number(ec.count)]),
-  );
-
-  // Map results to include counts
+  // Return without counts - counts can be fetched on demand if needed
   return brandsList.map((brand) => ({
     ...brand,
     _count: {
-      transactions: txCountMap[brand.id] || 0,
-      projects: projCountMap[brand.id] || 0,
-      employees: empCountMap[brand.id] || 0,
+      transactions: 0,
+      projects: 0,
+      employees: 0,
     },
   }));
 }
