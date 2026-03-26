@@ -22,7 +22,7 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     .select()
     .from(users)
     .orderBy((t) => t.createdAt)
-    .limit(1000);
+    .limit(100);
 
   return usersList as UserWithRelations[];
 }

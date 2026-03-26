@@ -13,7 +13,7 @@ export default async function InvitesPage() {
     redirect("/dashboard");
   }
 
-  // Fetch invites with relations
+  // Fetch invites with relations - with limit
   const invitesList = await db
     .select({
       id: invites.id,
@@ -36,7 +36,8 @@ export default async function InvitesPage() {
     .from(invites)
     .leftJoin(users, eq(invites.invitedById, users.id))
     .leftJoin(brands, eq(invites.brandId, brands.id))
-    .orderBy(desc(invites.createdAt));
+    .orderBy(desc(invites.createdAt))
+    .limit(100);
 
   // Fetch active brands
   const brandsList = await db

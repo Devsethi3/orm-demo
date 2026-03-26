@@ -81,7 +81,8 @@ export async function getSubscriptions(): Promise<SubscriptionWithDue[]> {
   const subscriptionsList = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.isActive, true));
+    .where(eq(subscriptions.isActive, true))
+    .limit(50);
 
   const now = new Date();
 

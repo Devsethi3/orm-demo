@@ -17,7 +17,8 @@ export default async function SettingsPage() {
   const currenciesList = await db
     .select()
     .from(currencies)
-    .orderBy(currencies.code);
+    .orderBy(currencies.code)
+    .limit(50);
 
   const fromCurrency = alias(currencies, "fromCurrency");
   const toCurrency = alias(currencies, "toCurrency");
@@ -39,7 +40,8 @@ export default async function SettingsPage() {
     .from(exchangeRates)
     .innerJoin(fromCurrency, eq(exchangeRates.fromCurrencyId, fromCurrency.id))
     .innerJoin(toCurrency, eq(exchangeRates.toCurrencyId, toCurrency.id))
-    .orderBy(exchangeRates.validFrom);
+    .orderBy(exchangeRates.validFrom)
+    .limit(100);
 
   return (
     <div className="space-y-6">
