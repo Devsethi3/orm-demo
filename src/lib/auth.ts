@@ -79,8 +79,29 @@ export async function createSession(
 ): Promise<string> {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
+  // Fetch user to include all data in JWT
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const user = userResult[0];
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  // Create token with all user data (no DB call needed on getSession)
   const token = await createToken(
-    { userId, sessionId: crypto.randomUUID() },
+    {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      status: user.status,
+      sessionId: crypto.randomUUID(),
+    },
     "7d",
   );
 
@@ -109,72 +130,29 @@ export async function getSession(): Promise<Session | null> {
 
     if (!token) return null;
 
+    // Verify JWT and extract user data from claims (no DB call!)
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    // Add a long timeout to prevent infinite hanging
-    // 28 seconds leaves 2-second buffer before Cloudflare's hard 30-second limit
-    const timeoutPromise = new Promise<Session | null>((resolve) => {
-      setTimeout(() => {
-        console.error("CRITICAL: getSession hung for 28 seconds - database unavailable");
-        resolve(null); // Return null instead of hanging forever
-      }, 28000);
-    });
+    // Validate user status from JWT
+    if (payload.status !== "ACTIVE") {
+      return null;
+    }
 
-    const queryPromise = (async () => {
-      try {
-        const result = await db
-          .select({
-            id: sessions.id,
-            token: sessions.token,
-            expiresAt: sessions.expiresAt,
-            userId: sessions.userId,
-            userId2: users.id,
-            email: users.email,
-            name: users.name,
-            role: users.role,
-            status: users.status,
-          })
-          .from(sessions)
-          .innerJoin(users, eq(sessions.userId, users.id))
-          .where(eq(sessions.token, token))
-          .limit(1);
+    // Extract expiration from JWT
+    const expiresAt = payload.exp ? new Date(payload.exp * 1000) : new Date();
 
-        if (!result || result.length === 0) return null;
-
-        const session = result[0];
-
-        if (session.expiresAt < new Date()) {
-          try {
-            await db.delete(sessions).where(eq(sessions.token, token));
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-          return null;
-        }
-
-        if (session.status !== "ACTIVE") {
-          return null;
-        }
-
-        return {
-          user: {
-            id: session.userId2,
-            email: session.email,
-            name: session.name,
-            role: session.role as UserRole,
-            status: session.status as UserStatus,
-          },
-          token: session.token,
-          expiresAt: session.expiresAt,
-        };
-      } catch (dbError) {
-        console.error("getSession database error:", dbError);
-        return null;
-      }
-    })();
-
-    return Promise.race([queryPromise, timeoutPromise]);
+    return {
+      user: {
+        id: payload.userId as string,
+        email: payload.email as string,
+        name: payload.name as string,
+        role: payload.role as UserRole,
+        status: payload.status as UserStatus,
+      },
+      token,
+      expiresAt,
+    };
   } catch (error) {
     console.error("Session retrieval error:", error);
     return null;
