@@ -37,80 +37,95 @@ function getAppBaseUrl(): string {
 }
 
 export async function login(input: LoginInput): Promise<ActionResponse> {
-  try {
-    const validated = loginSchema.safeParse(input);
+  // Add timeout protection - max 15 seconds
+  const timeoutPromise = new Promise<ActionResponse>((resolve) => {
+    setTimeout(() => {
+      console.warn("Login action timeout - query exceeded 15 seconds");
+      resolve({
+        success: false,
+        error: "Request timeout - please try again",
+      });
+    }, 15000);
+  });
 
-    if (!validated.success) {
+  const loginPromise = (async () => {
+    try {
+      const validated = loginSchema.safeParse(input);
+
+      if (!validated.success) {
+        return {
+          success: false,
+          errors: validated.error.flatten().fieldErrors as Record<
+            string,
+            string[]
+          >,
+        };
+      }
+
+      const { email, password } = validated.data;
+
+      const result = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
+
+      const user = result[0];
+
+      if (!user) {
+        return {
+          success: false,
+          error: "Invalid email or password",
+        };
+      }
+
+      if (user.status !== "ACTIVE") {
+        return {
+          success: false,
+          error: "Your account is not active. Please contact an administrator.",
+        };
+      }
+
+      const isValidPassword = await verifyPassword(password, user.passwordHash);
+
+      if (!isValidPassword) {
+        return {
+          success: false,
+          error: "Invalid email or password",
+        };
+      }
+
+      const token = await createSession(user.id);
+
+      const cookieStore = await cookies();
+      cookieStore.set("session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+        path: "/",
+      });
+
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        action: "LOGIN",
+        entityType: "USER",
+        entityId: user.id,
+        createdAt: new Date(),
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error("Login error:", error);
       return {
         success: false,
-        errors: validated.error.flatten().fieldErrors as Record<
-          string,
-          string[]
-        >,
+        error: "An unexpected error occurred. Please try again.",
       };
     }
+  })();
 
-    const { email, password } = validated.data;
-
-    const result = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1);
-
-    const user = result[0];
-
-    if (!user) {
-      return {
-        success: false,
-        error: "Invalid email or password",
-      };
-    }
-
-    if (user.status !== "ACTIVE") {
-      return {
-        success: false,
-        error: "Your account is not active. Please contact an administrator.",
-      };
-    }
-
-    const isValidPassword = await verifyPassword(password, user.passwordHash);
-
-    if (!isValidPassword) {
-      return {
-        success: false,
-        error: "Invalid email or password",
-      };
-    }
-
-    const token = await createSession(user.id);
-
-    const cookieStore = await cookies();
-    cookieStore.set("session", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
-    await db.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      action: "LOGIN",
-      entityType: "USER",
-      entityId: user.id,
-      createdAt: new Date(),
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error("Login error:", error);
-    return {
-      success: false,
-      error: "An unexpected error occurred. Please try again.",
-    };
-  }
+  return Promise.race([loginPromise, timeoutPromise]);
 }
 
 export async function logout(): Promise<void> {
