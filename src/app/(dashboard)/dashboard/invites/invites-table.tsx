@@ -34,7 +34,7 @@ import {
 import { revokeInvite, resendInvite } from "@/actions/auth";
 import { toast } from "sonner";
 import type { InviteWithRelations } from "@/types";
-import { InviteStatus } from "@/generated/prisma/enums";
+import { InviteStatus } from "@/lib/types/enums";
 
 interface InvitesTableProps {
   invites: InviteWithRelations[];

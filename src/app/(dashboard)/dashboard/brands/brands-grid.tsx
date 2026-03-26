@@ -1,4 +1,3 @@
-// src/app/(dashboard)/dashboard/brands/brands-grid.tsx
 "use client";
 
 import { useState } from "react";
@@ -34,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserRole } from "@/generated/prisma/enums";
+import { UserRole } from "@/lib/types/enums";
 
 interface Brand {
   id: string;

@@ -50,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserRole, UserStatus } from "@/generated/prisma/enums";
+import { UserRole, UserStatus } from "@/lib/types/enums";
 
 interface UsersTableProps {
   users: UserWithRelations[];
