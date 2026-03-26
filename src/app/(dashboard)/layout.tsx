@@ -9,25 +9,19 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  try {
-    const session = await getSession();
+  const session = await getSession();
 
-    if (!session) {
-      redirect("/login");
-    }
-
-    if (session.user.status !== "ACTIVE") {
-      redirect("/login");
-    }
-
-    return (
-      <DashboardLayoutClient user={session.user}>
-        {children}
-      </DashboardLayoutClient>
-    );
-  } catch (error) {
-    console.error("Error checking session on dashboard:", error);
-    // Redirect to login on any error
+  if (!session) {
     redirect("/login");
   }
+
+  if (session.user.status !== "ACTIVE") {
+    redirect("/login");
+  }
+
+  return (
+    <DashboardLayoutClient user={session.user}>
+      {children}
+    </DashboardLayoutClient>
+  );
 }

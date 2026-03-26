@@ -7,15 +7,10 @@ import { LoginForm } from "./login-form";
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
-  try {
-    const session = await getSession();
+  const session = await getSession();
 
-    if (session) {
-      redirect("/dashboard");
-    }
-  } catch (error) {
-    console.error("Error checking session on login page:", error);
-    // Continue to show login page even if session check fails
+  if (session) {
+    redirect("/dashboard");
   }
 
   return <LoginForm />;

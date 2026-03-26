@@ -38,6 +38,29 @@ function getAppBaseUrl(): string {
 
 export async function login(input: LoginInput): Promise<ActionResponse> {
   try {
+    // Add timeout protection for Cloudflare Workers
+    const timeoutPromise = new Promise<ActionResponse>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          success: false,
+          error: "Request timeout - please try again",
+        });
+      }, 8000); // 8 second timeout
+    });
+
+    const loginPromise = loginInternal(input);
+    return await Promise.race([loginPromise, timeoutPromise]);
+  } catch (error) {
+    console.error("Login error:", error);
+    return {
+      success: false,
+      error: "An unexpected error occurred during login",
+    };
+  }
+}
+
+async function loginInternal(input: LoginInput): Promise<ActionResponse> {
+  try {
     const validated = loginSchema.safeParse(input);
 
     if (!validated.success) {
@@ -105,7 +128,7 @@ export async function login(input: LoginInput): Promise<ActionResponse> {
 
     return { success: true };
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Login internal error:", error);
     return {
       success: false,
       error: "An unexpected error occurred. Please try again.",
