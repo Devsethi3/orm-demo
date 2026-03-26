@@ -112,53 +112,69 @@ export async function getSession(): Promise<Session | null> {
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    // Direct query without unnecessary timeout wrapper
-    // These queries are critical and must complete naturally
-    const result = await db
-      .select({
-        id: sessions.id,
-        token: sessions.token,
-        expiresAt: sessions.expiresAt,
-        userId: sessions.userId,
-        userId2: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-        status: users.status,
-      })
-      .from(sessions)
-      .innerJoin(users, eq(sessions.userId, users.id))
-      .where(eq(sessions.token, token))
-      .limit(1);
+    // Add a long timeout to prevent infinite hanging
+    // 28 seconds leaves 2-second buffer before Cloudflare's hard 30-second limit
+    const timeoutPromise = new Promise<Session | null>((resolve) => {
+      setTimeout(() => {
+        console.error("CRITICAL: getSession hung for 28 seconds - database unavailable");
+        resolve(null); // Return null instead of hanging forever
+      }, 28000);
+    });
 
-    if (!result || result.length === 0) return null;
-
-    const session = result[0];
-
-    if (session.expiresAt < new Date()) {
+    const queryPromise = (async () => {
       try {
-        await db.delete(sessions).where(eq(sessions.token, token));
-      } catch (e) {
-        // Ignore cleanup errors
+        const result = await db
+          .select({
+            id: sessions.id,
+            token: sessions.token,
+            expiresAt: sessions.expiresAt,
+            userId: sessions.userId,
+            userId2: users.id,
+            email: users.email,
+            name: users.name,
+            role: users.role,
+            status: users.status,
+          })
+          .from(sessions)
+          .innerJoin(users, eq(sessions.userId, users.id))
+          .where(eq(sessions.token, token))
+          .limit(1);
+
+        if (!result || result.length === 0) return null;
+
+        const session = result[0];
+
+        if (session.expiresAt < new Date()) {
+          try {
+            await db.delete(sessions).where(eq(sessions.token, token));
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          return null;
+        }
+
+        if (session.status !== "ACTIVE") {
+          return null;
+        }
+
+        return {
+          user: {
+            id: session.userId2,
+            email: session.email,
+            name: session.name,
+            role: session.role as UserRole,
+            status: session.status as UserStatus,
+          },
+          token: session.token,
+          expiresAt: session.expiresAt,
+        };
+      } catch (dbError) {
+        console.error("getSession database error:", dbError);
+        return null;
       }
-      return null;
-    }
+    })();
 
-    if (session.status !== "ACTIVE") {
-      return null;
-    }
-
-    return {
-      user: {
-        id: session.userId2,
-        email: session.email,
-        name: session.name,
-        role: session.role as UserRole,
-        status: session.status as UserStatus,
-      },
-      token: session.token,
-      expiresAt: session.expiresAt,
-    };
+    return Promise.race([queryPromise, timeoutPromise]);
   } catch (error) {
     console.error("Session retrieval error:", error);
     return null;
