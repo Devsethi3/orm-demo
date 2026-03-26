@@ -11,17 +11,33 @@ function createDb() {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
-    throw new Error("DATABASE_URL is not set");
+    console.error("DATABASE_URL is not set");
+    throw new Error("DATABASE_URL is not set. Please configure your database URL in environment variables.");
   }
 
-  const client = postgres(connectionString);
-  return drizzle(client);
+  try {
+    const client = postgres(connectionString, {
+      max: 1, // Limit connections for Cloudflare Workers
+      idle_timeout: 10,
+      connect_timeout: 10,
+    });
+    return drizzle(client);
+  } catch (error) {
+    console.error("Failed to create database connection:", error);
+    throw error;
+  }
 }
 
-const db = globalForDb.db ?? createDb();
+let db: ReturnType<typeof drizzle> | null = null;
 
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.db = db;
+try {
+  db = globalForDb.db ?? createDb();
+  if (process.env.NODE_ENV !== "production") {
+    globalForDb.db = db;
+  }
+} catch (error) {
+  console.error("Database initialization error:", error);
+  // Don't throw - let it fail gracefully on actual database access
 }
 
-export default db;
+export default db!;
