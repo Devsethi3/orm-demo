@@ -188,6 +188,19 @@ export async function getSession(): Promise<Session | null> {
       } catch (dbError) {
         console.error("getSession database error:", dbError);
         // Fall back to JWT claims if database fails
+        
+        // Validate JWT fields exist
+        if (!payload.userId || !payload.email || !payload.name || !payload.role || !payload.status) {
+          console.error("JWT claims incomplete on database error:", { 
+            hasUserId: !!payload.userId,
+            hasEmail: !!payload.email, 
+            hasName: !!payload.name,
+            hasRole: !!payload.role,
+            hasStatus: !!payload.status
+          });
+          return null;
+        }
+
         return {
           user: {
             id: payload.userId as string,
@@ -202,10 +215,25 @@ export async function getSession(): Promise<Session | null> {
       }
     })();
 
-    // Set a timeout - if database doesn't respond in 5 seconds, use JWT claims
+    // Set a timeout - if database doesn't respond in 2 seconds, use JWT claims
+    // (Cloudflare Workers: TCP connections aren't supported, so DB will always timeout)
     const timeoutPromise = new Promise<Session | null>((resolve) => {
       setTimeout(() => {
         console.warn("Database query timeout - falling back to JWT claims");
+        
+        // Validate JWT fields exist before using them
+        if (!payload.userId || !payload.email || !payload.name || !payload.role || !payload.status) {
+          console.error("JWT claims incomplete:", { 
+            hasUserId: !!payload.userId,
+            hasEmail: !!payload.email, 
+            hasName: !!payload.name,
+            hasRole: !!payload.role,
+            hasStatus: !!payload.status
+          });
+          resolve(null);
+          return;
+        }
+
         resolve({
           user: {
             id: payload.userId as string,
@@ -217,7 +245,7 @@ export async function getSession(): Promise<Session | null> {
           token,
           expiresAt: payload.exp ? new Date((payload.exp as number) * 1000) : new Date(),
         });
-      }, 5000);
+      }, 2000);
     });
 
     return Promise.race([dbQueryPromise, timeoutPromise]);
