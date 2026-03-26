@@ -13,6 +13,23 @@ export async function getDashboardStats(): Promise<DashboardStats | null> {
 
   if (!session) return null;
 
+  // Wrap entire dashboard stats in a timeout promise
+  return Promise.race([
+    getDashboardStatsInternal(),
+    new Promise<DashboardStats | null>((resolve) => {
+      setTimeout(() => {
+        console.warn("getDashboardStats timeout - query took too long");
+        resolve(null);
+      }, 8000); // 8 second timeout
+    }),
+  ]);
+}
+
+async function getDashboardStatsInternal(): Promise<DashboardStats | null> {
+  const session = await getSession();
+
+  if (!session) return null;
+
   const now = new Date();
   const currentMonthStart = startOfMonth(now);
   const currentMonthEnd = endOfMonth(now);

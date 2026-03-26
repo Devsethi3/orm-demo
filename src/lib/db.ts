@@ -33,4 +33,12 @@ function getDb(): ReturnType<typeof drizzle> {
   return cachedDb;
 }
 
-export default getDb();
+// Use a Proxy to lazily initialize the database only when accessed
+// This prevents blocking on Cloudflare Workers at module load time
+const lazyDb = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(target, prop) {
+    return getDb()[prop as keyof typeof getDb];
+  },
+});
+
+export default lazyDb;
