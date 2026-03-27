@@ -1,5 +1,3 @@
-// src/app/(dashboard)/dashboard/users/page.tsx
-import { getUsers } from "@/actions/users";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,15 +10,13 @@ export default async function UsersPage() {
     redirect("/dashboard");
   }
 
-  const users = await getUsers();
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Users"
         description="Manage system users and their roles"
       />
-      <UsersTable users={users} currentUserId={session.user.id} />
+      <UsersTable currentUserId={session.user.id} />
     </div>
   );
 }

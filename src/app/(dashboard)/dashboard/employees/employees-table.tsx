@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { isSameMonth } from "date-fns";
 import {
   Table,
@@ -32,9 +31,9 @@ import {
   DollarSign,
   UserX,
   Users,
-  RefreshCw,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import { markEmployeePaid, terminateEmployee } from "@/actions/employees";
 import { toast } from "sonner";
 import type { EmployeeWithRelations } from "@/types";
 import {
@@ -47,10 +46,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  useEmployees,
+  useBrands,
+  useTerminateEmployee,
+} from "@/lib/hooks/use-queries";
 
 interface EmployeesTableProps {
-  employees: EmployeeWithRelations[];
-  brands: { id: string; name: string }[];
   canManage: boolean;
 }
 
@@ -115,8 +117,6 @@ function TableBodySkeleton() {
 }
 
 export function EmployeesTable({
-  employees,
-  brands,
   canManage,
 }: EmployeesTableProps) {
   const [showForm, setShowForm] = useState(false);
@@ -125,8 +125,16 @@ export function EmployeesTable({
   const [terminatingEmployee, setTerminatingEmployee] =
     useState<EmployeeWithRelations | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isRefreshing, startTransition] = useTransition();
-  const router = useRouter();
+
+  // React Query hooks with auto-caching and refetch
+  const { data: employees = [], isLoading, error, refetch } = useEmployees();
+  const { data: brands = [] } = useBrands();
+  const terminateMutation = useTerminateEmployee();
+
+  const brandsMap = brands.reduce(
+    (acc, b) => ({ ...acc, [b.id]: b.name }),
+    {} as Record<string, string>
+  );
 
   const filteredEmployees = employees.filter((emp) => {
     return (
@@ -137,22 +145,18 @@ export function EmployeesTable({
     );
   });
 
-  const handleRefresh = () => {
-    startTransition(() => {
-      router.refresh();
-    });
-  };
-
-  const handleTerminate = async () => {
+  const handleTerminate = () => {
     if (!terminatingEmployee) return;
-
-    const result = await terminateEmployee(terminatingEmployee.id);
-    if (result.success) {
-      toast.success("Employee terminated");
-    } else {
-      toast.error(result.error || "Failed to terminate employee");
-    }
-    setTerminatingEmployee(null);
+    
+    terminateMutation.mutate(terminatingEmployee.id, {
+      onSuccess: () => {
+        toast.success("Employee terminated");
+        setTerminatingEmployee(null);
+      },
+      onError: (error: any) => {
+        toast.error(error.message || "Failed to terminate employee");
+      },
+    });
   };
 
   const totalSalary = employees.reduce(
@@ -160,75 +164,105 @@ export function EmployeesTable({
     0,
   );
 
-  const handleMarkPaid = async (employee: EmployeeWithRelations) => {
-    const result = await markEmployeePaid(employee.id);
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <SummaryCardsSkeleton />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <Skeleton className="h-10 max-w-sm" />
+          {canManage && <Skeleton className="h-10 w-32" />}
+        </div>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Position</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead className="text-right">Salary</TableHead>
+                <TableHead>Payment Day</TableHead>
+                <TableHead>Last Payment</TableHead>
+                <TableHead>Status</TableHead>
+                {canManage && <TableHead className="w-[50px]"></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableBodySkeleton />
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  }
 
-    if (result.success) {
-      toast.success(`${employee.name} marked as paid`);
-      startTransition(() => {
-        router.refresh();
-      });
-      return;
-    }
-
-    toast.error(result.error || "Failed to mark employee as paid");
-  };
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h3 className="mt-4 text-lg font-semibold">Failed to Load Employees</h3>
+        <p className="text-sm text-muted-foreground">
+          {error.message || "An error occurred while fetching employees"}
+        </p>
+        <Button className="mt-4" onClick={() => refetch()}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
-      {isRefreshing ? (
-        <SummaryCardsSkeleton />
-      ) : (
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Total Employees
-              </span>
-            </div>
-            <p className="mt-2 text-2xl font-medium">{employees.length}</p>
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium text-muted-foreground">
+              Total Employees
+            </span>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-green-500" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Active
-              </span>
-            </div>
-            <p className="mt-2 text-2xl font-medium text-green-600">
-              {employees.filter((e) => e.isActive).length}
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-blue-500" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Monthly Payroll
-              </span>
-            </div>
-            <p className="mt-2 text-2xl font-medium">
-              {formatCurrency(totalSalary)}
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-purple-500" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Avg Salary
-              </span>
-            </div>
-            <p className="mt-2 text-2xl font-medium">
-              {formatCurrency(
-                employees.length > 0 ? totalSalary / employees.length : 0,
-              )}
-            </p>
-          </div>
+          <p className="mt-2 text-2xl font-medium">{employees.length}</p>
         </div>
-      )}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-green-500" />
+            <span className="text-sm font-medium text-muted-foreground">
+              Active
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-medium text-green-600">
+            {employees.filter((e) => e.isActive).length}
+          </p>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-blue-500" />
+            <span className="text-sm font-medium text-muted-foreground">
+              Monthly Payroll
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-medium">
+            {formatCurrency(totalSalary)}
+          </p>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-purple-500" />
+            <span className="text-sm font-medium text-muted-foreground">
+              Avg Salary
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-medium">
+            {formatCurrency(
+              employees.length > 0 ? totalSalary / employees.length : 0,
+            )}
+          </p>
+        </div>
+      </div>
 
-      {/* Toolbar - Always visible, always in same position */}
+      {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -237,30 +271,17 @@ export function EmployeesTable({
             className="pl-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={isRefreshing}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
+        {canManage && (
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Employee
           </Button>
-          {canManage && (
-            <Button onClick={() => setShowForm(true)} disabled={isRefreshing}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Employee
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Table - Always rendered, only body content swaps */}
+      {/* Table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -276,9 +297,7 @@ export function EmployeesTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isRefreshing ? (
-              <TableBodySkeleton />
-            ) : filteredEmployees.length === 0 ? (
+            {filteredEmployees.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={canManage ? 8 : 7} className="h-24 text-center">
                   No employees found
@@ -351,27 +370,6 @@ export function EmployeesTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {(() => {
-                            const alreadyPaidThisMonth =
-                              !!employee.lastPayment &&
-                              employee.lastPayment.status === "PAID" &&
-                              isSameMonth(
-                                new Date(employee.lastPayment.paymentDate),
-                                new Date(),
-                              );
-
-                            return (
-                              <DropdownMenuItem
-                                onClick={() => handleMarkPaid(employee)}
-                                disabled={alreadyPaidThisMonth || isRefreshing}
-                              >
-                                <DollarSign className="mr-2 h-4 w-4" />
-                                {alreadyPaidThisMonth
-                                  ? "Already Paid This Month"
-                                  : "Mark as Paid"}
-                              </DropdownMenuItem>
-                            );
-                          })()}
                           <DropdownMenuItem
                             onClick={() => setEditingEmployee(employee)}
                           >
@@ -426,18 +424,27 @@ export function EmployeesTable({
             <AlertDialogHeader>
               <AlertDialogTitle>Terminate Employee</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to terminate &ldquo;
-                {terminatingEmployee?.name}
-                &rdquo;? This will mark them as inactive in the system.
+                Are you sure you want to terminate {terminatingEmployee?.name}?
+                This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={terminateMutation.isPending}>
+                Cancel
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleTerminate}
+                disabled={terminateMutation.isPending}
                 className="bg-destructive text-destructive-foreground"
               >
-                Terminate
+                {terminateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Terminating...
+                  </>
+                ) : (
+                  "Terminate"
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

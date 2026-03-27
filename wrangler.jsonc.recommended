@@ -1,0 +1,74 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	
+	// === PRODUCTION ENVIRONMENT (PRIMARY) ===
+	"env": {
+		"production": {
+			"main": ".open-next/worker.js",
+			"name": "finance-crm-production",
+			"compatibility_date": "2025-09-27",
+			"compatibility_flags": ["nodejs_compat"],
+
+			// === ASSETS & IMAGES BINDINGS ===
+			"assets": {
+				"directory": ".open-next/assets",
+				"binding": "ASSETS"
+			},
+
+			"images": {
+				"binding": "IMAGES"
+			},
+
+			// === WORKER SELF-REFERENCE ===
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "finance-crm-production"
+				}
+			],
+
+			// === OBSERVABILITY ===
+			"observability": {
+				"enabled": true
+			},
+
+			// === ENVIRONMENT VARIABLES (Non-sensitive) ===
+			"vars": {
+				"BETTER_AUTH_URL": "https://finance-crm-production.workers.dev"
+				// ⚠️ UPDATE BEFORE DEPLOYING FOR PRODUCTION:
+				// "BETTER_AUTH_URL": "https://your-custom-domain.com"
+			},
+
+			// === SECRETS (Sensitive - stored in Cloudflare vault) ===
+			// These are uploaded via: pnpm exec wrangler secret put SECRET_NAME --env production
+			// All three are already uploaded:
+			"secrets": [
+				"DATABASE_URL",           // ✅ Uploaded - Neon PostgreSQL
+				"BETTER_AUTH_SECRET",     // ✅ Uploaded - JWT signing secret
+				"EXCHANGE_RATE_API_KEY"   // ✅ Uploaded - Currency API access
+			]
+		},
+
+		// === DEVELOPMENT ENVIRONMENT (Optional) ===
+		// Usage: pnpm dev (uses .env.local instead of wrangler config)
+		"development": {
+			"main": ".open-next/worker.js",
+			"name": "finance-crm-development",
+			"compatibility_date": "2025-09-27",
+			"compatibility_flags": ["nodejs_compat"],
+
+			"assets": {
+				"directory": ".open-next/assets",
+				"binding": "ASSETS"
+			},
+
+			"images": {
+				"binding": "IMAGES"
+			},
+
+			"vars": {
+				"BETTER_AUTH_URL": "http://localhost:3000"
+			}
+		}
+	}
+}

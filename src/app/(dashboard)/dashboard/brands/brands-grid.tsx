@@ -20,8 +20,9 @@ import {
   Trash2,
   Building2,
   ArrowLeftRight,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import { deleteBrand } from "@/actions/brands";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -33,7 +34,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { UserRole } from "@/lib/types/enums";
+import {
+  useBrands,
+  useDeleteBrand,
+  useCreateBrand,
+  useUpdateBrand,
+} from "@/lib/hooks/use-queries";
 
 interface Brand {
   id: string;
@@ -51,19 +59,45 @@ interface Brand {
 }
 
 interface BrandsGridProps {
-  brands: Brand[];
   userRole: UserRole;
 }
 
-export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
+/**
+ * BrandsGrid Component with React Query Integration
+ *
+ * Benefits:
+ * - Automatic caching: Data cached for 5 minutes, reducing API calls
+ * - Request deduplication: Multiple simultaneous requests return same cached data
+ * - Smart invalidation: Mutations automatically refetch data
+ * - Loading states: Built-in via React Query, not manual useState
+ * - Background refresh: Auto-refetch when window regains focus
+ *
+ * Before (manual approach):
+ * - Page level fetch: const brands = await getBrands()
+ * - Manual loading: useState(loading)
+ * - Manual refetch: Need to refetch after delete/create
+ *
+ * After (React Query):
+ * - Component level fetch: useBrands() hook
+ * - Automatic loading: Query provides isLoading state
+ * - Automatic refetch: Mutation hooks auto-invalidate and refetch
+ * - Smart cache: 5min stale, auto-refresh on focus
+ */
+export function BrandsGrid({ userRole }: BrandsGridProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [deletingBrand, setDeletingBrand] = useState<Brand | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // React Query hooks - auto-manage loading, caching, and refetching
+  const { data: brands = [], isLoading, error, refetch } = useBrands();
+  const deleteMutation = useDeleteBrand();
+  const createMutation = useCreateBrand();
+  const updateMutation = useUpdateBrand();
+
   const isAdmin = userRole === "ADMIN";
 
-  const filteredBrands = brands.filter((brand) => {
+  const filteredBrands = (brands || []).filter((brand) => {
     return (
       !searchQuery ||
       brand.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -74,14 +108,49 @@ export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
   const handleDelete = async () => {
     if (!deletingBrand) return;
 
-    const result = await deleteBrand(deletingBrand.id);
-    if (result.success) {
-      toast.success("Brand deleted successfully");
-    } else {
-      toast.error(result.error || "Failed to delete brand");
-    }
-    setDeletingBrand(null);
+    deleteMutation.mutate(deletingBrand.id, {
+      onSuccess: () => {
+        toast.success("Brand deleted successfully");
+        setDeletingBrand(null);
+      },
+      onError: (error: any) => {
+        toast.error(error.message || "Failed to delete brand");
+      },
+    });
   };
+
+  // Loading state - show skeletons
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <Skeleton className="h-10 max-w-sm" />
+          {isAdmin && <Skeleton className="h-10 w-32" />}
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-64 rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h3 className="mt-4 text-lg font-semibold">Failed to Load Brands</h3>
+        <p className="text-sm text-muted-foreground">
+          {error.message || "An error occurred while fetching brands"}
+        </p>
+        <Button className="mt-4" onClick={() => refetch()}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -97,7 +166,10 @@ export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
           />
         </div>
         {isAdmin && (
-          <Button onClick={() => setShowForm(true)}>
+          <Button
+            onClick={() => setShowForm(true)}
+            disabled={createMutation.isPending}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Brand
           </Button>
@@ -124,7 +196,25 @@ export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredBrands.map((brand) => (
-            <Card key={brand.id} className="relative">
+            <Card
+              key={brand.id}
+              className="relative opacity-50"
+              style={{
+                opacity: deleteMutation.isPending &&
+                  deleteMutation.variables === brand.id ? 0.5 : 1,
+                pointerEvents:
+                  deleteMutation.isPending &&
+                  deleteMutation.variables === brand.id
+                    ? "none"
+                    : "auto",
+              }}
+            >
+              {deleteMutation.isPending && deleteMutation.variables === brand.id && (
+                <div className="absolute inset-0 rounded-lg bg-background/50 flex items-center justify-center z-10">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
               {isAdmin && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -208,6 +298,9 @@ export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
           }
         }}
         brand={editingBrand}
+        isLoading={
+          createMutation.isPending || updateMutation.isPending
+        }
       />
 
       {/* Delete Confirmation */}
@@ -226,12 +319,22 @@ export function BrandsGrid({ brands, userRole }: BrandsGridProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
+              disabled={deleteMutation.isPending}
               className="bg-destructive text-destructive-foreground"
             >
-              Delete
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

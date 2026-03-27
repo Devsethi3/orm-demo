@@ -15,9 +15,9 @@ function createDb() {
   }
 
   const client = postgres(connectionString, {
-    max: 1,
-    idle_timeout: 10,
-    connect_timeout: 10,
+    max: 10,                    // Connection pool size
+    idle_timeout: 30,           // Seconds before closing idle connections
+    connect_timeout: 30,        // Seconds to establish new connection
   });
   return drizzle(client);
 }

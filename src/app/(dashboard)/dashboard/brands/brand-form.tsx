@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { brandSchema, type BrandInput } from "@/lib/validations";
@@ -15,9 +15,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { createBrand, updateBrand } from "@/actions/brands";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import {
+  useCreateBrand,
+  useUpdateBrand,
+} from "@/lib/hooks/use-queries";
 
 interface BrandFormProps {
   open: boolean;
@@ -28,11 +31,34 @@ interface BrandFormProps {
     description: string | null;
     logoUrl: string | null;
   } | null;
+  isLoading?: boolean;
 }
 
-export function BrandForm({ open, onOpenChange, brand }: BrandFormProps) {
-  const [loading, setLoading] = useState(false);
+/**
+ * BrandForm Component using React Query Mutations
+ *
+ * Benefits:
+ * - No manual loading state: Mutations provide isPending
+ * - Automatic refetch on success: Invalidation happens automatically
+ * - Better UX: Smooth transitions without page refresh
+ * - Consistent error handling: Mutations catch errors
+ */
+export function BrandForm({
+  open,
+  onOpenChange,
+  brand,
+  isLoading: externalLoading,
+}: BrandFormProps) {
   const isEditing = !!brand;
+
+  // React Query mutations - manage loading state automatically
+  const createMutation = useCreateBrand();
+  const updateMutation = useUpdateBrand();
+
+  const isLoading =
+    externalLoading ||
+    createMutation.isPending ||
+    updateMutation.isPending;
 
   const {
     register,
@@ -44,43 +70,49 @@ export function BrandForm({ open, onOpenChange, brand }: BrandFormProps) {
   });
 
   useEffect(() => {
-    if (brand) {
-      reset({
-        name: brand.name,
-        description: brand.description || "",
-        logoUrl: brand.logoUrl || "",
-      });
-    } else {
-      reset({
-        name: "",
-        description: "",
-        logoUrl: "",
-      });
-    }
-  }, [brand, reset]);
-
-  const onSubmit = handleSubmit(async (data) => {
-    setLoading(true);
-    try {
-      const result = isEditing
-        ? await updateBrand(brand!.id, data)
-        : await createBrand(data);
-
-      if (result.success) {
-        toast.success(
-          isEditing
-            ? "Brand updated successfully"
-            : "Brand created successfully",
-        );
-        reset();
-        onOpenChange(false);
+    if (open) {
+      if (brand) {
+        reset({
+          name: brand.name,
+          description: brand.description || "",
+          logoUrl: brand.logoUrl || "",
+        });
       } else {
-        toast.error(result.error || "Operation failed");
+        reset({
+          name: "",
+          description: "",
+          logoUrl: "",
+        });
       }
-    } catch (error) {
-      toast.error("An error occurred");
-    } finally {
-      setLoading(false);
+    }
+  }, [brand, reset, open]);
+
+  const onSubmit = handleSubmit((data) => {
+    if (isEditing) {
+      updateMutation.mutate(
+        { id: brand!.id, data },
+        {
+          onSuccess: () => {
+            toast.success("Brand updated successfully");
+            reset();
+            onOpenChange(false);
+          },
+          onError: (error: any) => {
+            toast.error(error.message || "Failed to update brand");
+          },
+        }
+      );
+    } else {
+      createMutation.mutate(data, {
+        onSuccess: () => {
+          toast.success("Brand created successfully");
+          reset();
+          onOpenChange(false);
+        },
+        onError: (error: any) => {
+          toast.error(error.message || "Failed to create brand");
+        },
+      });
     }
   });
 
@@ -93,25 +125,39 @@ export function BrandForm({ open, onOpenChange, brand }: BrandFormProps) {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Brand Name *</Label>
-            <Input placeholder="Acme Corporation" {...register("name")} />
+            <Label htmlFor="name">Brand Name *</Label>
+            <Input
+              id="name"
+              placeholder="Acme Corporation"
+              disabled={isLoading}
+              {...register("name")}
+            />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>Description</Label>
+            <Label htmlFor="description">Description</Label>
             <Textarea
+              id="description"
               placeholder="Brand description..."
+              disabled={isLoading}
               {...register("description")}
             />
+            {errors.description && (
+              <p className="text-sm text-destructive">
+                {errors.description.message}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Logo URL</Label>
+            <Label htmlFor="logoUrl">Logo URL</Label>
             <Input
+              id="logoUrl"
               placeholder="https://example.com/logo.png"
+              disabled={isLoading}
               {...register("logoUrl")}
             />
             {errors.logoUrl && (
@@ -126,12 +172,15 @@ export function BrandForm({ open, onOpenChange, brand }: BrandFormProps) {
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={isLoading}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEditing ? "Update" : "Create"} Brand
+            <Button type="submit" disabled={isLoading}>
+              {isLoading && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {isEditing ? "Update Brand" : "Create Brand"}
             </Button>
           </DialogFooter>
         </form>

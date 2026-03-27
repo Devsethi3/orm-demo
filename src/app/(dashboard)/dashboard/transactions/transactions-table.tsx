@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -28,26 +29,26 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeftRight,
+  AlertCircle,
 } from "lucide-react";
-import type { TransactionWithRelations, PaginatedResponse } from "@/types";
+import type { TransactionWithRelations } from "@/types";
 import { cn } from "@/lib/utils";
+import { useTransactions, useBrands } from "@/lib/hooks/use-queries";
 
 interface TransactionsTableProps {
-  initialData: PaginatedResponse<TransactionWithRelations>;
-  brands: { id: string; name: string }[];
   canCreate: boolean;
 }
 
 export function TransactionsTable({
-  initialData,
-  brands,
   canCreate,
 }: TransactionsTableProps) {
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
-  const transactions = initialData.data;
+  // React Query hooks for automatic caching and refetch
+  const { data: transactions = [], isLoading, error, refetch } = useTransactions();
+  const { data: brands = [] } = useBrands();
 
   const filteredTransactions = transactions.filter((t) => {
     const matchesSearch =
@@ -85,6 +86,79 @@ export function TransactionsTable({
     };
     return <Badge variant={variants[type] || "default"}>{type}</Badge>;
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 gap-4">
+            <Skeleton className="h-10 max-w-sm" />
+            <Skeleton className="h-10 w-[150px]" />
+          </div>
+          {canCreate && <Skeleton className="h-10 w-32" />}
+        </div>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">USD Value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-6 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-6 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="ml-auto h-4 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="ml-auto h-4 w-24" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h3 className="mt-4 text-lg font-semibold">Failed to Load Transactions</h3>
+        <p className="text-sm text-muted-foreground">
+          {error.message || "An error occurred while fetching transactions"}
+        </p>
+        <Button className="mt-4" onClick={() => refetch()}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -187,7 +261,7 @@ export function TransactionsTable({
       {/* Pagination info */}
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <p>
-          Showing {filteredTransactions.length} of {initialData.total}{" "}
+          Showing {filteredTransactions.length} of {transactions.length}{" "}
           transactions
         </p>
       </div>

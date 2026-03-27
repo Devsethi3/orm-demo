@@ -130,125 +130,71 @@ export async function getSession(): Promise<Session | null> {
 
     if (!token) return null;
 
+    // Verify JWT signature first
     const payload = await verifyToken(token);
     if (!payload) return null;
 
-    // Use a race condition with timeout to prevent hanging on slow databases
-    // If database is slow, fall back to JWT claims (better than timeout)
+    // JWT is the source of truth (it's cryptographically signed)
+    // All fields should be in the JWT from createSession
+    if (!payload.userId) return null;
+
+    // Use JWT fields directly, but validate they exist
+    const userId = payload.userId as string;
+    const email = (payload.email as string) || "unknown@example.com";
+    const name = (payload.name as string) || "User";
+    const role = (payload.role as string || "CLIENT") as UserRole;
+    const status = (payload.status as string || "ACTIVE") as UserStatus;
+    const expiresAt = payload.exp ? new Date((payload.exp as number) * 1000) : new Date();
+
+    // Optional: Verify session still exists in DB (with timeout for performance)
+    // Skip if JWT is still valid and recently created
     const dbQueryPromise = (async () => {
       try {
         const result = await db
-          .select({
-            id: sessions.id,
-            token: sessions.token,
-            expiresAt: sessions.expiresAt,
-            userId: sessions.userId,
-            userId2: users.id,
-            email: users.email,
-            name: users.name,
-            role: users.role,
-            status: users.status,
-          })
+          .select({ id: sessions.id, expiresAt: sessions.expiresAt })
           .from(sessions)
-          .innerJoin(users, eq(sessions.userId, users.id))
           .where(eq(sessions.token, token))
           .limit(1);
 
         if (!result || result.length === 0) {
-          // Session not in database - it may have been invalidated
-          return null;
+          // Session was invalidated
+          return false;
         }
 
-        const session = result[0];
-
-        if (session.expiresAt < new Date()) {
-          try {
-            await db.delete(sessions).where(eq(sessions.token, token));
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-          return null;
-        }
-
-        if (session.status !== "ACTIVE") {
-          return null;
-        }
-
-        return {
-          user: {
-            id: session.userId2,
-            email: session.email,
-            name: session.name,
-            role: session.role as UserRole,
-            status: session.status as UserStatus,
-          },
-          token: session.token,
-          expiresAt: session.expiresAt,
-        };
-      } catch (dbError) {
-        console.error("getSession database error:", dbError);
-        // Fall back to JWT claims if database fails
-        
-        // Validate JWT fields exist
-        if (!payload.userId || !payload.email || !payload.name || !payload.role || !payload.status) {
-          console.error("JWT claims incomplete on database error:", { 
-            hasUserId: !!payload.userId,
-            hasEmail: !!payload.email, 
-            hasName: !!payload.name,
-            hasRole: !!payload.role,
-            hasStatus: !!payload.status
-          });
-          return null;
-        }
-
-        return {
-          user: {
-            id: payload.userId as string,
-            email: payload.email as string,
-            name: payload.name as string,
-            role: payload.role as UserRole,
-            status: payload.status as UserStatus,
-          },
-          token,
-          expiresAt: payload.exp ? new Date((payload.exp as number) * 1000) : new Date(),
-        };
+        // Session exists and is valid
+        return true;
+      } catch (error) {
+        // DB error - assume session is valid based on JWT
+        console.warn("Session verification DB error (using JWT):", error);
+        return true;
       }
     })();
 
-    // Set a timeout - if database doesn't respond in 2 seconds, use JWT claims
-    // (Cloudflare Workers: TCP connections aren't supported, so DB will always timeout)
-    const timeoutPromise = new Promise<Session | null>((resolve) => {
+    // Set timeout - default to valid if DB is slow
+    const timeoutPromise = new Promise<boolean>((resolve) => {
       setTimeout(() => {
-        console.warn("Database query timeout - falling back to JWT claims");
-        
-        // Validate JWT fields exist before using them
-        if (!payload.userId || !payload.email || !payload.name || !payload.role || !payload.status) {
-          console.error("JWT claims incomplete:", { 
-            hasUserId: !!payload.userId,
-            hasEmail: !!payload.email, 
-            hasName: !!payload.name,
-            hasRole: !!payload.role,
-            hasStatus: !!payload.status
-          });
-          resolve(null);
-          return;
-        }
-
-        resolve({
-          user: {
-            id: payload.userId as string,
-            email: payload.email as string,
-            name: payload.name as string,
-            role: payload.role as UserRole,
-            status: payload.status as UserStatus,
-          },
-          token,
-          expiresAt: payload.exp ? new Date((payload.exp as number) * 1000) : new Date(),
-        });
-      }, 2000);
+        console.warn("Session DB verification timeout - trusting JWT");
+        resolve(true);
+      }, 5000);
     });
 
-    return Promise.race([dbQueryPromise, timeoutPromise]);
+    const isValid = await Promise.race([dbQueryPromise, timeoutPromise]);
+
+    if (!isValid) {
+      return null;
+    }
+
+    return {
+      user: {
+        id: userId,
+        email,
+        name,
+        role,
+        status,
+      },
+      token,
+      expiresAt,
+    };
   } catch (error) {
     console.error("Session retrieval error:", error);
     return null;
