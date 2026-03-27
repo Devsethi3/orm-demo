@@ -1,13 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Cloudflare Workers compatibility notes:
-  // - Using App Router for modern server components
-  // - API routes handle auth and backend operations
-  // - Minimal middleware for Cloudflare compatibility
-  
-  // Ensure production builds don't include unnecessary source maps
+  // Disable image optimization for Cloudflare compatibility
+  // Cloudflare will serve images through our static assets
+  images: {
+    unoptimized: true,
+  },
+
+  // Disable source maps in production
   productionBrowserSourceMaps: false,
+
+  // Ensure stable output for Cloudflare deployment
+  output: "standalone",
 };
 
 export default nextConfig;
