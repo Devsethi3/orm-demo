@@ -1,20 +1,8 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "finance-crm",
+	"name": "demo",
 	"pages_build_output_dir": ".next",
 	"compatibility_date": "2025-09-27",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"services": [
-		{
-			"binding": "WORKER_SELF_REFERENCE",
-			"service": "finance-crm"
-		}
-	],
-	"observability": {
-		"enabled": true
-	},
 	"env": {
 		"production": {
 			"vars": {
@@ -23,6 +11,6 @@
 		}
 	},
 	"vars": {
-		"BETTER_AUTH_URL": "https://finance-crm.your-domain.com"
+		"BETTER_AUTH_URL": "https://demo.pages.dev"
 	}
 }
