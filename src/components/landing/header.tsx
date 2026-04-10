@@ -26,15 +26,17 @@ const Header = memo(function Header() {
       className={cn(
         "sticky top-0 z-50 w-full border-b transition-all duration-300",
         scrolled
-          ? "border-white/10 bg-black/80 backdrop-blur-md shadow-sm"
+          ? "border-white/10 bg-black/80 backdrop-blur-md"
           : "border-transparent bg-transparent",
       )}
     >
-      <nav className="mx-auto flex h-16 w-full max-w-[1480px] items-center justify-between px-3 py-4 lg:px-12">
-        <Link href="/" className="flex flex-shrink-0 items-center">
+      <nav className="mx-auto flex h-16 w-full max-w-[1480px] items-center justify-between px-3 lg:px-12">
+        {/* Logo */}
+        <Link href="/" className="flex items-center z-[60]">
           <Logo />
         </Link>
 
+        {/* Desktop Nav */}
         <div className="hidden items-center gap-2 md:flex">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
@@ -45,7 +47,7 @@ const Header = memo(function Header() {
                 asChild
                 variant="ghost"
                 className={cn(
-                  "text-xs font-chivo-mono tracking-[0.12em] uppercase transition-colors",
+                  "text-xs font-chivo-mono tracking-[0.12em] uppercase",
                   isActive
                     ? "text-white bg-white/10"
                     : "text-white/70 hover:text-white",
@@ -57,8 +59,8 @@ const Header = memo(function Header() {
           })}
         </div>
 
-        <div className="flex items-center gap-4">
-          <Link href={"/contact-us"}>
+        <div className="flex items-center z-[60] gap-3">
+          <Link href="/contact-us" className="">
             <Button className="text-xs">Book a call</Button>
           </Link>
 

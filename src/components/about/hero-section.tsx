@@ -8,7 +8,7 @@ const HeroSection = () => {
         <div className="w-full">
           <h1 className="text-4xl sm:text-6xl font-heading mb-6 sm:mb-8 text-muted-foreground">
             We Build Products That Are <br /> Meant{" "}
-            <span className="text-foreground">to Scale</span>
+            <span className="text-foreground italic">to Scale</span>
           </h1>
 
           <p className="text-[#888888] text-[15px] leading-relaxed max-w-[460px]">

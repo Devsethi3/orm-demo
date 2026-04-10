@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import CaseStudiesSection from "@/components/landing/case-studies";
 import CompareSection from "@/components/landing/compare-section";
 import ExecutionPathsSection from "@/components/landing/execution-paths";
@@ -7,6 +8,9 @@ import SolutionSection from "@/components/landing/solution-section";
 import TechStackSection from "@/components/landing/tech-stack-section";
 import WorkSlider from "@/components/landing/work-slider";
 import WhoWeWorkWith from "@/components/landing/work-with-section";
+import { generatePageMetadata } from "@/lib/metadata";
+
+export const metadata: Metadata = generatePageMetadata("home");
 
 const HomePage = () => {
   return (

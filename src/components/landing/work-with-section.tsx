@@ -1,5 +1,6 @@
 import Image from "next/image";
 import React from "react";
+import { SectionLabel } from "../ui/section-label";
 
 interface WorkItem {
   title: string;
@@ -94,8 +95,8 @@ const MarkerT: React.FC<MarkerTProps> = ({ position, className = "" }) => {
       <div
         className={`absolute top-0 -translate-y-[1px] -translate-x-1/2 flex flex-col items-center z-10 ${className}`}
       >
-        <div className="w-[7px] h-[1px] bg-white"></div>
-        <div className="w-[1px] h-[4px] bg-white"></div>
+        <div className="w-[15px] h-[2px] bg-white"></div>
+        <div className="w-[2px] h-[8px] bg-white"></div>
       </div>
     );
   }
@@ -104,8 +105,8 @@ const MarkerT: React.FC<MarkerTProps> = ({ position, className = "" }) => {
       <div
         className={`absolute bottom-0 translate-y-[1px] -translate-x-1/2 flex flex-col items-center z-10 ${className}`}
       >
-        <div className="w-[1px] h-[4px] bg-white"></div>
-        <div className="w-[7px] h-[1px] bg-white"></div>
+        <div className="w-[2px] h-[8px] bg-white"></div>
+        <div className="w-[15px] h-[1.5px] bg-white"></div>
       </div>
     );
   }
@@ -116,15 +117,10 @@ const WhoWeWorkWith: React.FC = () => {
   return (
     <section className="bg-black text-white py-16 sm:py-20 md:py-24 px-3 lg:px-12 w-full flex flex-col items-center selection:bg-white selection:text-black">
       <div className="flex flex-col items-center text-center max-w-2xl mb-12 sm:mb-16 md:mb-20">
-        <div className="flex items-center gap-3 mb-6 sm:mb-8">
-          <div className="size-2.5 bg-white"></div>
-          <span className="text-xs uppercase font-chivo-mono">
-            Who we work for
-          </span>
-        </div>
+        <SectionLabel text="Who We Work With" />
 
         <h2 className="text-4xl md:text-5xl lg:text-6xl font-heading font-medium text-muted-foreground mb-4 sm:mb-6 px-4">
-          Who We Work <span className="text-foreground">With</span>
+          Who We Work <span className="text-foreground italic">With</span>
         </h2>
 
         <p className="text-[#a1a1aa] text-sm sm:text-base md:text-lg leading-relaxed font-light px-4">

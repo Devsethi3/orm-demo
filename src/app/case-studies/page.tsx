@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
+import Image from "next/image";
 import Footer from "@/components/landing/footer";
 import { Button } from "@/components/ui/button";
 import { ArrowUpRightIcon } from "lucide-react";
+import { generatePageMetadata } from "@/lib/metadata";
+
+export const metadata: Metadata = generatePageMetadata("caseStudies");
 
 const caseStudies = [
   {
@@ -53,7 +58,7 @@ const CaseStudiesPage = () => {
       <section className="px-3 lg:px-12 py-12 sm:py-16 lg:py-24 max-w-[1480px] mx-auto">
         <h1 className="text-4xl sm:text-6xl font-heading leading mb-6 sm:mb-8 text-muted-foreground">
           From Idea to Production - <br /> Without{" "}
-          <span className="text-foreground">the Chaos</span>
+          <span className="text-foreground italic">the Chaos</span>
         </h1>
         <p className="text-lg text-muted-foreground">
           A selection of products we&apos;ve designed, built, and scaled.
@@ -66,17 +71,19 @@ const CaseStudiesPage = () => {
             className="flex flex-col group cursor-pointer"
           >
             <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden bg-[#111] mb-6 border border-[#222]">
-              <img
+              <Image
                 src={study.bgImage}
                 alt="Background texture"
-                className="absolute inset-0 w-full h-full object-cover grayscale mix-blend-luminosity opacity-40"
+                fill
+                className="absolute inset-0 object-cover grayscale mix-blend-luminosity opacity-40"
               />
 
               <div className="absolute inset-0 p-4 sm:p-8 flex items-center justify-center">
-                <img
+                <Image
                   src={study.uiImage}
                   alt={`${study.title} Interface`}
-                  className={`w-full h-full object-cover mt-16
+                  fill
+                  className={`object-cover mt-16
                     ${study.isLightUi ? "brightness-110" : "brightness-90"}
                   `}
                 />

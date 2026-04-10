@@ -1,5 +1,7 @@
+import Image from "next/image";
 import { ArrowUpRightIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { SectionLabel } from "../ui/section-label";
 
 const caseStudies = [
   {
@@ -22,17 +24,13 @@ export default function CaseStudiesSection() {
   return (
     <section className="w-full min-h-screen bg-black text-white py-24 px-3 md:px-12 selection:bg-white selection:text-black flex flex-col items-center">
       <div className="w-full max-w-[1400px] flex flex-col items-start mb-16 lg:mb-24">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="size-3 mb-0.5 bg-white"></div>
-          <span className="text-sm uppercase font-chivo-mono">
-            Case Studies
-          </span>
-        </div>
+        <SectionLabel text="Case Studies" />
 
         <div className="flex flex-col max-w-2xl">
           <h2 className="font-heading text-4xl sm:text-5xl md:text-6xl lg:text-[4.5rem] text-muted-foreground mb-8">
-            Built for <span className="text-foreground">Real Products</span>,
-            Not <br className="hidden sm:block" />
+            Built for{" "}
+            <span className="text-foreground italic">Real Products</span>, Not{" "}
+            <br className="hidden sm:block" />
             Just Ideas
           </h2>
           <p className="text-[#a1a1aa] text-[15px] sm:text-[17px] leading-relaxed max-w-[500px]">
@@ -49,17 +47,19 @@ export default function CaseStudiesSection() {
             className="flex flex-col group cursor-pointer"
           >
             <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden bg-[#111] mb-6 border border-[#222]">
-              <img
+              <Image
                 src={study.bgImage}
                 alt="Background texture"
-                className="absolute inset-0 w-full h-full object-cover grayscale mix-blend-luminosity opacity-40"
+                fill
+                className="absolute inset-0 object-cover grayscale mix-blend-luminosity opacity-40"
               />
 
               <div className="absolute inset-0 p-4 sm:p-8 flex items-center justify-center">
-                <img
+                <Image
                   src={study.uiImage}
                   alt={`${study.title} Interface`}
-                  className={`w-full h-full object-cover mt-16
+                  fill
+                  className={`object-cover mt-16
                     ${study.isLightUi ? "brightness-110" : "brightness-90"}
                   `}
                 />

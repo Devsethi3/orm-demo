@@ -3,6 +3,8 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
+import { SectionLabel } from "../ui/section-label";
+import Image from "next/image";
 
 const slides = [
   {
@@ -21,9 +23,9 @@ const slides = [
   },
   {
     id: 3,
-    title: "Development & Execution",
+    title: "Discovery & Product Definition",
     description:
-      "Rigorous engineering sprints deliver scalable, production-ready code with built-in compliance.",
+      "We align on product goals, user needs, and technical direction to create a clear execution plan.",
     image: "/slide-1.svg",
   },
   {
@@ -63,24 +65,18 @@ const WorkSlider = () => {
       <div className="max-w-[1480px] lg:px-12 w-full mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-12 lg:gap-24 h-full min-h-[600px]">
         <div className="flex flex-col justify-between h-full pt-4">
           <div className="mb-16 lg:mb-0">
-            <div className="flex items-center gap-3 mb-10">
-              <div className="size-2.5 bg-white"></div>
-              <span className="text-[10px] font-chivo-mono tracking-[0.2em] uppercase">
-                How we work
-              </span>
-            </div>
-
+            <SectionLabel text="How We Work" />
             <h2 className="text-4xl sm:text-5xl lg:text-[3.5rem] leading-[1.1] mb-6 font-heading text-muted-foreground">
               A System Built for{" "}
-              <span className="text-foreground">Structured Execution</span>
+              <span className="text-foreground italic">
+                Structured Execution
+              </span>
             </h2>
-
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-md">
               A structured approach to building products where design,
               engineering, and scalability are considered from day one.
             </p>
           </div>
-
           <div className="mt-12 lg:mt-auto">
             <div className="flex items-center gap-2 mb-8">
               <Button
@@ -105,13 +101,9 @@ const WorkSlider = () => {
               {slides.map((slide, index) => (
                 <div
                   key={`text-${slide.id}`}
-                  className={`absolute top-0 left-0 w-full transition-all duration-500 ease-in-out ${
-                    index === currentIndex
-                      ? "opacity-100 translate-y-0 pointer-events-auto"
-                      : "opacity-0 translate-y-4 pointer-events-none"
-                  }`}
+                  className={`absolute top-0 left-0 w-full transition-all duration-500 ease-in-out ${index === currentIndex ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-4 pointer-events-none"}`}
                 >
-                  <h3 className=" text-base mb-3 tracking-wide">
+                  <h3 className="text-base mb-3 tracking-wide">
                     {slide.title}
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed max-w-lg">
@@ -120,12 +112,11 @@ const WorkSlider = () => {
                 </div>
               ))}
             </div>
-
             <div className="w-full h-px bg-muted max-w-lg"></div>
           </div>
         </div>
 
-        <div className="relative w-full h-[400px] sm:h-[500px] lg:h-full min-h-[500px] flex items-center justify-center lg:justify-end overflow-hidden">
+        <div className="hidden relative w-full h-[400px] sm:h-[500px] lg:h-full min-h-[500px] lg:flex items-center justify-center lg:justify-end overflow-hidden">
           {slides.map((slide, index) => (
             <div
               key={`img-${slide.id}`}
@@ -133,14 +124,14 @@ const WorkSlider = () => {
                 index === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
               }`}
             >
-              <div className="w-full h-full relative flex items-center justify-center lg:justify-end">
-                <img
+              <div className="image-overlay w-full h-full relative flex items-center justify-center lg:justify-end">
+                <Image
                   src={slide.image}
                   alt={slide.title}
-                  className="max-h-full max-w-full object-contain object-right 
-                               "
+                  fill
+                  className="object-contain object-right"
+                  sizes="(max-width: 768px) 100vw, 50vw"
                 />
-                <div className="absolute inset-0 bg-black/20 mix-blend-overlay pointer-events-none"></div>
               </div>
             </div>
           ))}

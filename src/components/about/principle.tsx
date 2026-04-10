@@ -55,9 +55,9 @@ export default function Principle() {
 
               <h2 className="text-4xl sm:text-5xl font-heading md:text-[3.5rem] leading-[1.1] text-muted-foreground">
                 How We Think About{" "}
-                <span className="text-foreground">Building</span>{" "}
+                <span className="text-foreground italic">Building</span>{" "}
                 <br className="lg:inline hidden" />{" "}
-                <span className="text-foreground">Products</span>
+                <span className="text-foreground italic">Products</span>
               </h2>
             </div>
 

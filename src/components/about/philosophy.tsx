@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Square } from "lucide-react";
+import { ClipText, TextScrollRead } from "../ui/text-scroll-read";
 
 const includedFeatures = [
   {
@@ -55,8 +56,9 @@ export default function Philosophy() {
 
               <h2 className="text-4xl sm:text-5xl font-heading md:text-[3.5rem] leading-[1.1] text-muted-foreground">
                 How We Think About{" "}
-                <span className="text-foreground">Building</span> <br className="lg:inline hidden" />{" "}
-                <span className="text-foreground">Products</span>
+                <span className="text-foreground italic">Building</span>{" "}
+                <br className="lg:inline hidden" />{" "}
+                <span className="text-foreground italic">Products</span>
               </h2>
             </div>
 
@@ -92,14 +94,17 @@ export default function Philosophy() {
             </span>
           </div>
           <h2 className="text-4xl text-muted-foreground font-heading">
-            Why Most Products <span className="text-foreground">Fail</span>
+            Why Most Products{" "}
+            <span className="text-foreground italic">Fail</span>
           </h2>
-          <p className="lg:text-4xl md:text-2xl text-xl my-8 text-foreground/80">
-            Most products don&apos;t fail because of bad ideas - they fail because
-            execution is fragmented. Design and engineering fall out of sync.
-            Speed is prioritized over structure. What gets built isn&apos;t designed
-            to scale.
-          </p>
+          <TextScrollRead className="my-6" spaceClass="h-0" offset={["start end", "end center"]}>
+            <ClipText className="lg:text-4xl md:text-3xl text-xl font-light bg-[linear-gradient(-90deg,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.8)_50%)]">
+              Most products don&apos;t fail because of bad ideas - they fail
+              because execution is fragmented. Design and engineering fall out
+              of sync. Speed is prioritized over structure. What gets built
+              isn&apos;t designed to scale.
+            </ClipText>
+          </TextScrollRead>
           <span className="lg:text-4xl md:text-2xl text-xl text-foreground/80">
             We exist to fix that.
           </span>

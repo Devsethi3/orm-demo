@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
+import { PixelatedCanvas } from "../ui/pixelated-canvas";
 
 const HeroSection = () => {
   return (
@@ -18,7 +19,7 @@ const HeroSection = () => {
 
           <h1 className="text-4xl sm:text-6xl font-heading leading-tight mb-6 sm:mb-8 text-muted-foreground">
             Engineering Acceleration For{" "}
-            <span className="text-foreground">Growing Startups</span>
+            <span className="text-foreground italic">Growing Startups</span>
           </h1>
 
           <p className="text-sm sm:text-base lg:text-lg text-white/60 mb-8 sm:mb-12 max-w-xl leading-relaxed font-geist">
@@ -46,12 +47,33 @@ const HeroSection = () => {
 
         <div className="w-full flex justify-end items-center mt-8 lg:mt-0">
           <div className="w-full max-w-[600px] aspect-[3/4] sm:aspect-auto sm:h-[500px] lg:h-[650px] relative overflow-hidden bg-white/5">
+            <PixelatedCanvas
+              src="/slide-1.svg"
+              width={600}
+              height={650}
+              cellSize={3}
+              dotScale={0.9}
+              shape="square"
+              backgroundColor="#000000"
+              dropoutStrength={0.4}
+              interactive
+              distortionStrength={3}
+              distortionRadius={80}
+              distortionMode="swirl"
+              followSpeed={0.2}
+              jitterStrength={4}
+              jitterSpeed={4}
+              sampleAverage
+              tintColor="#FFFFFF"
+              tintStrength={0.2}
+              className="rounded-xl brightness-150 border border-neutral-800 shadow-lg hidden md:block"
+            />
             <Image
               src={"/slide-1.svg"}
               alt="hero image"
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 600px"
-              className="object-cover"
+              className="object-cover rounded-xl border border-neutral-800 md:hidden block"
               priority
               quality={95}
             />

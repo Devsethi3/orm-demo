@@ -2,6 +2,7 @@ import React from "react";
 import Image from "next/image";
 import { CheckCircle2, ArrowUpRight } from "lucide-react";
 import { Button } from "../ui/button";
+import { SectionLabel } from "../ui/section-label";
 
 const CornerBrackets = ({ children }: { children: React.ReactNode }) => {
   return (
@@ -67,16 +68,11 @@ export default function ExecutionPathsSection() {
 
       <div className="relative z-10 w-full max-w-[1300px] flex flex-col items-center">
         <div className="flex flex-col items-center text-center max-w-2xl mb-20">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="size-3 bg-white"></div>
-            <span className="text-sm uppercase font-chivo-mono">
-              Execution Paths
-            </span>
-          </div>
+          <SectionLabel text="Execution Paths" />
 
           <h2 className="font-heading text-4xl sm:text-5xl md:text-[3.5rem] leading-[1.1] mb-6 text-muted-foreground">
-            How You Can Work <br className="hidden sm:block" /> With{" "}
-            <span className="text-foreground">Us</span>
+            How You Can Work <br className="hidden sm:block" />{" "}
+            <span className="text-foreground italic">With Us</span>
           </h2>
 
           <p className="text-[#a1a1aa] text-[15px] sm:text-base leading-relaxed max-w-xl font-light">
@@ -99,9 +95,7 @@ export default function ExecutionPathsSection() {
                   `}
                 >
                   <div className="mb-10">
-                    <h3 className="text-lg mb-3 tracking-wide">
-                      {card.title}
-                    </h3>
+                    <h3 className="text-lg mb-3 tracking-wide">{card.title}</h3>
                     <p
                       className={`text-sm leading-relaxed 
                       ${card.isHighlighted ? "text-[#3f3f46]" : "text-[#8a8a93]"}

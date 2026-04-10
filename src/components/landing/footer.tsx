@@ -27,8 +27,8 @@ export default function Footer() {
 
       <div className="relative z-10 w-full max-w-[900px] flex flex-col items-center text-center mt-10 md:mt-20">
         <div className="inline-flex items-center gap-3 bg-[#111] border border-[#333] px-4 py-2 mb-8">
-          <div className="size-2 bg-white"></div>
-          <span className="text-[10px] sm:text-[11px] uppercase tracking-[0.15em] text-[#d4d4d8] font-medium font-chivo-mono flex items-center gap-2">
+          <div className="size-2.5 mb-0.5 bg-white"></div>
+          <span className="text-xs lg:text-sm uppercase font-chivo-mono flex items-center gap-2">
             Start a conversation{" "}
             <ArrowRight className="w-3.5 h-3.5 text-[#888]" />
           </span>
@@ -36,13 +36,13 @@ export default function Footer() {
 
         <h2 className="font-heading text-[2.75rem] sm:text-6xl md:text-[4.5rem] leading-[1.05] mb-8 text-muted-foreground">
           Let&apos;s Build Something That <br className="hidden sm:block" />
-          Actually <span className="text-foreground">Scales</span>
+           <span className="text-foreground italic">Actually Scales</span>
         </h2>
 
         <p className="text-[15px] text-foreground/80 sm:text-[17px] leading-relaxed max-w-[600px] mb-12">
-          Whether you&apos;re starting from scratch or scaling an existing product,
-          we&apos;ll help you move fast with structure, clarity, and long-term
-          stability.
+          Whether you&apos;re starting from scratch or scaling an existing
+          product, we&apos;ll help you move fast with structure, clarity, and
+          long-term stability.
         </p>
 
         <Button className="h-10! lg:text-sm text-xs">
@@ -60,29 +60,27 @@ export default function Footer() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-x-12 gap-y-12 lg:gap-x-24 w-full lg:w-auto">
             <div className="flex flex-col gap-5">
-              <h4 className="text-[14px] mb-1">
-                Navigation
-              </h4>
+              <h4 className="text-[14px] mb-1">Navigation</h4>
               <Link
-                href="#"
+                href="/"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 Home
               </Link>
               <Link
-                href="#"
+                href="/execution"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 How We Works
               </Link>
               <Link
-                href="#"
+                href="/case-studies"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 Case Studies
               </Link>
               <Link
-                href="#"
+                href="/about"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 About
@@ -94,13 +92,13 @@ export default function Footer() {
                 Services
               </h4>
               <Link
-                href="#"
+                href="/mvp"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 MVP Launch Program
               </Link>
               <Link
-                href="#"
+                href="/execution"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 Executions
@@ -112,7 +110,7 @@ export default function Footer() {
                 Support
               </h4>
               <Link
-                href="#"
+                href="/contact-us"
                 className="text-foreground/80 hover:text-white transition-colors text-[14px]"
               >
                 Help center
@@ -133,10 +131,10 @@ export default function Footer() {
         <div className="w-full border-t border-[#333]/60 pt-6 pb-2 flex flex-col md:flex-row items-center justify-between gap-4 text-[13px] text-foreground/60">
           <p>© 2026 Xocket</p>
           <div className="flex items-center gap-6">
-            <Link href="#" className="hover:text-white transition-colors">
+            <Link href="/terms" className="hover:text-white transition-colors">
               Terms
             </Link>
-            <Link href="#" className="hover:text-white transition-colors">
+            <Link href="/privacy" className="hover:text-white transition-colors">
               Privacy Policy
             </Link>
           </div>

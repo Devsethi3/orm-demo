@@ -32,7 +32,9 @@ const SprintEngagementModel = () => {
           <div className="flex flex-col lg:flex-row justify-between items-start gap-12 lg:gap-24">
             <h2 className="font-heading text-4xl md:text-5xl lg:text-6xl max-w-2xl leading-[1.1] font-normal tracking-tight text-muted-foreground">
               We use AI + structured sprints <br className="hidden md:block" />
-              <span className="text-foreground">to move 2-3x faster</span>
+              <span className="text-foreground italic">
+                to move 2-3x faster
+              </span>
             </h2>
 
             <p className="text-foreground/80 text-sm leading-relaxed max-w-md lg:mt-4 font-light">
@@ -79,7 +81,6 @@ const SprintEngagementModel = () => {
         </div>
 
         <div className="relative z-10 w-full max-w-5xl mx-auto flex flex-col items-center">
-          {/* Section Header Centered */}
           <div className="flex flex-col items-center text-center mb-16">
             <div className="flex items-center gap-3 mb-6">
               <div className="size-2.5 bg-white"></div>
@@ -89,7 +90,8 @@ const SprintEngagementModel = () => {
             </div>
 
             <h2 className="font-heading text-4xl md:text-5xl lg:text-6xl mb-6 text-muted-foreground">
-              Monthly Engagement <span className="text-foreground">Model</span>
+              Monthly Engagement{" "}
+              <span className="text-foreground italic">Model</span>
             </h2>
 
             <p className="text-foreground/80 text-[15px] leading-relaxed max-w-md">
@@ -98,9 +100,7 @@ const SprintEngagementModel = () => {
             </p>
           </div>
 
-          <div
-            className="bg-white text-black w-full max-w-[480px] p-8 md:p-12 relative shadow-2xl"
-          >
+          <div className="bg-white text-black w-full max-w-[480px] p-8 md:p-12 relative shadow-2xl">
             <div className="relative z-10">
               <h3 className="font-chivo-mono text-lg">Startups receive:</h3>
 
@@ -120,11 +120,9 @@ const SprintEngagementModel = () => {
                 ))}
               </ul>
 
-              <Button className="group">
-                <span>
-                  Start MVP Program
-                </span>
-                <ArrowUpRight className="w-[18px] h-[18px] group-hover:text-white group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
+              <Button className="group" variant={'secondary'}>
+                <span className="text-sm">Start MVP Program</span>
+                <ArrowUpRight className="w-[18px] h-[18px] group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
               </Button>
             </div>
           </div>

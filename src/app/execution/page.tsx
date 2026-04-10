@@ -1,9 +1,13 @@
+import type { Metadata } from "next";
 import HeroSection from "@/components/execution/hero-section";
 import Model from "@/components/execution/model";
 import SprintEngagementModel from "@/components/execution/sprint-engagement-model";
 import WhoWeWorkWith from "@/components/execution/work-with-section";
 import CaseStudiesSection from "@/components/landing/case-studies";
 import Footer from "@/components/landing/footer";
+import { generatePageMetadata } from "@/lib/metadata";
+
+export const metadata: Metadata = generatePageMetadata("execution");
 
 const ExecutionPage = () => {
   return (

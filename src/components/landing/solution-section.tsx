@@ -1,26 +1,21 @@
 import { LayersIcon, NetworkIcon, ArrowDownUp } from "lucide-react";
-
-const SectionLabel = ({ text }:{text:string}) => (
-  <div className="flex items-center gap-3 mb-8">
-    <div className="size-2.5 mb-0.5 bg-white"></div>
-    <span className="text-xs sm:text-sm font-chivo-mono uppercase">
-      {text}
-    </span>
-  </div>    
-);
+import { ClipText, TextScrollRead } from "../ui/text-scroll-read";
+import { SectionLabel } from "../ui/section-label";
 
 const SolutionSection = () => {
   return (
     <div className="w-full bg-black text-white font-sans selection:bg-white selection:text-black">
       <section className="px-3 lg:px-12 py-16 lg:py-28 max-w-[1480px] mx-auto">
-        <SectionLabel text="The Problem" />
-        <p className="lg:text-4xl md:text-3xl text-xl font-light text-foreground/80 lg:leading-normal leading-tight">
-          Most startup products don&apos;t fail because of bad ideas, they fail
-          because execution is fragmented. Design and engineering fall out of
-          sync, speed is prioritized over structure, and what gets built isn&apos;t
-          designed to scale. Over time, this creates technical debt and slows
-          everything down.
-        </p>
+        <TextScrollRead spaceClass="h-0" offset={["start end", "end center"]}>
+          <SectionLabel text="The Problem" />
+          <ClipText className="lg:text-4xl md:text-3xl text-xl font-light lg:leading-normal leading-tight bg-[linear-gradient(-90deg,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.8)_50%)]">
+            Most startup products don&apos;t fail because of bad ideas, they
+            fail because execution is fragmented. Design and engineering fall
+            out of sync, speed is prioritized over structure, and what gets
+            built isn&apos;t designed to scale. Over time, this creates
+            technical debt and slows everything down.
+          </ClipText>
+        </TextScrollRead>
       </section>
 
       <section className="relative px-3 py-16 lg:py-28 lg:px-12 bg-[#0c0c0c] overflow-hidden">
@@ -37,11 +32,9 @@ const SolutionSection = () => {
 
           <div className="flex flex-col lg:flex-row lg:items-end justify-between lg:gap-8 gap-3 mb-16 lg:mb-20">
             <h2 className="text-3xl sm:text-5xl lg:text-[3.5rem] leading-[1.1] tracking-tight text-white">
-              <span className="text-muted-foreground">
-                A System Built for
-              </span>
+              <span className="text-muted-foreground">A System Built for</span>
               <br />
-              <span className="">Structured Execution</span>
+              <span className="italic font-heading tracking-wide">Structured Execution</span>
             </h2>
             <p className="text-[#a1a1aa] text-sm sm:text-base leading-relaxed max-w-sm lg:mb-2">
               A structured approach to building products where design,
@@ -49,8 +42,20 @@ const SolutionSection = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white text-black p-6 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group">
+          {/* === CHANGES ARE IN THIS CONTAINER AND ITS CHILDREN === */}
+          <div
+            className="
+              flex gap-6 overflow-x-auto pb-4 
+              md:grid md:grid-cols-2 lg:grid-cols-3
+              [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+            "
+          >
+            <div
+              className="
+                w-[90%] flex-shrink-0 sm:w-[380px] md:w-auto
+                bg-white text-black p-6 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group
+              "
+            >
               <div>
                 <ArrowDownUp className="text-black group-hover:scale-110 transition-transform duration-300 origin-top-left" />
               </div>
@@ -65,7 +70,12 @@ const SolutionSection = () => {
               </div>
             </div>
 
-            <div className="bg-white text-black p-8 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group">
+            <div
+              className="
+                w-[90%] flex-shrink-0 sm:w-[380px] md:w-auto
+                bg-white text-black p-8 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group
+              "
+            >
               <div>
                 <LayersIcon className="text-black group-hover:scale-110 transition-transform duration-300 origin-top-left" />
               </div>
@@ -80,7 +90,12 @@ const SolutionSection = () => {
               </div>
             </div>
 
-            <div className="bg-white text-black p-8 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group md:col-span-2 lg:col-span-1">
+            <div
+              className="
+                w-[90%] flex-shrink-0 sm:w-[380px] md:w-auto
+                bg-white text-black p-8 lg:p-10 flex flex-col justify-between min-h-[360px] lg:min-h-[420px] transition-transform duration-300 hover:-translate-y-1 group md:col-span-2 lg:col-span-1
+              "
+            >
               <div>
                 <NetworkIcon className="text-black group-hover:scale-110 transition-transform duration-300 origin-top-left" />
               </div>

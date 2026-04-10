@@ -56,11 +56,10 @@ const Timeline = () => {
 
           <h1 className="font-heading text-5xl md:text-6xl lg:text-7xl font-normal leading-[1.1] mb-8 text-muted-foreground">
             MVP Project <br />
-            <span className="text-foreground">Timeline</span>
+            <span className="text-foreground italic">Timeline</span>
           </h1>
 
-          <div className="relative w-full flex items-center mt-12">
-            <div className="absolute left-0 right-0 h-px bg-muted"></div>
+          <div className="relative w-full flex items-center">
             <div className="relative ml-auto bg-black pl-6 py-1 text-sm text-foreground/70 hidden md:block z-10">
               A typical MVP build follows a 6-8 week execution timeline.
             </div>
@@ -70,7 +69,7 @@ const Timeline = () => {
           </div>
         </div>
 
-        <div className="relative w-full flex flex-col mt-16 md:mt-32">
+        <div className="relative w-full flex flex-col">
           <div className="absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px bg-white/50 md:-translate-x-1/2"></div>
 
           {timelineData.map((item, index) => {

@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight } from "lucide-react";
+import { PixelatedCanvas } from "../ui/pixelated-canvas";
+import { BorderButton } from "../ui/border-button";
 import Image from "next/image";
 
 const HeroSection = () => {
@@ -16,10 +18,11 @@ const HeroSection = () => {
             </span>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-heading font-light mb-6 sm:mb-8">
-            <span className="text-white/60">Structured Execution</span> for
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-heading font-light mb-6 sm:mb-8 text-muted-foreground">
+            Structured Execution for
             <br />
-            Growing Startups
+            <span className="text-foreground italic">Growing</span>{" "}
+            <span className="italic text-foreground">Startups</span>
           </h1>
 
           <p className="text-sm sm:text-base lg:text-lg text-white/60 mb-8 sm:mb-12 max-w-xl leading-relaxed font-geist">
@@ -31,28 +34,43 @@ const HeroSection = () => {
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
             <Button
               size="lg"
-            className="flex text-xs sm:text-sm items-center justify-center gap-2 w-full sm:w-auto"
+              className="flex text-xs sm:text-sm items-center justify-center gap-2 w-full sm:w-auto"
             >
               Start a project <ArrowUpRight size={16} />
             </Button>
-            <Button
-              variant="secondary"
-              size="lg"
-              className="flex items-center text-xs sm:text-sm justify-center gap-2 w-full sm:w-auto border-white/20 text-white hover:bg-white/5"
-            >
-              See how it works <ArrowUpRight size={16} />
-            </Button>
+            <BorderButton>See How It works</BorderButton>
           </div>
         </div>
 
         <div className="w-full flex justify-end items-center mt-8 lg:mt-0">
-          <div className="w-full max-w-[600px] aspect-[3/4] sm:aspect-auto sm:h-[500px] lg:h-[650px] relative overflow-hidden bg-white/5 border border-white/10">
+          <div className="w-full max-w-[600px] aspect-[3/4] sm:aspect-auto sm:h-[600px] lg:h-[750px] relative overflow-hidden group">
+            <PixelatedCanvas
+              src="/hero.svg"
+              width={600}
+              height={750}
+              cellSize={3}
+              dotScale={0.9}
+              shape="square"
+              backgroundColor="#000000"
+              dropoutStrength={0.4}
+              interactive
+              distortionStrength={3}
+              distortionRadius={80}
+              distortionMode="swirl"
+              followSpeed={0.2}
+              jitterStrength={4}
+              jitterSpeed={4}
+              sampleAverage
+              tintColor="#FFFFFF"
+              tintStrength={0.2}
+              className="brightness-150 hidden md:block"
+            />
             <Image
               src={"/hero.svg"}
               alt="hero image"
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 600px"
-              className="object-cover"
+              className="object-cover md:hidden block"
               priority
               quality={95}
             />

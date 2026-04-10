@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import React from "react";
+import { SectionLabel } from "../ui/section-label";
 
 interface CornerBracketProps {
   position: "tl" | "tr" | "bl" | "br";
@@ -20,7 +21,7 @@ const CornerBracket: React.FC<CornerBracketProps> = ({
   position,
   colorClass,
 }) => {
-  const size = 12; 
+  const size = 12;
   const offset = -2.5;
 
   const borderStyles: React.CSSProperties = {
@@ -70,11 +71,20 @@ const comparisonRows: ComparisonRow[] = [
       text: "Design and development happen in silos",
       icon: <LinkIcon className="size-4.5" />,
     },
-    our: { text: "Design and engineering run in parallel", icon: <LinkIcon className="size-4.5" /> },
+    our: {
+      text: "Design and engineering run in parallel",
+      icon: <LinkIcon className="size-4.5" />,
+    },
   },
   {
-    typical: { text: "Built for quick launch", icon: <RocketIcon className="size-4.5" /> },
-    our: { text: "Built for long-term scale", icon: <LayersIcon className="size-4.5" /> },
+    typical: {
+      text: "Built for quick launch",
+      icon: <RocketIcon className="size-4.5" />,
+    },
+    our: {
+      text: "Built for long-term scale",
+      icon: <LayersIcon className="size-4.5" />,
+    },
   },
   {
     typical: {
@@ -97,8 +107,14 @@ const comparisonRows: ComparisonRow[] = [
     },
   },
   {
-    typical: { text: "Slower iteration over time", icon: <ClockIcon className="size-4.5" /> },
-    our: { text: "Faster iteration with stability", icon: <CloudSyncIcon className="size-4.5" /> },
+    typical: {
+      text: "Slower iteration over time",
+      icon: <ClockIcon className="size-4.5" />,
+    },
+    our: {
+      text: "Faster iteration with stability",
+      icon: <CloudSyncIcon className="size-4.5" />,
+    },
   },
 ];
 
@@ -107,18 +123,13 @@ const CompareSection: React.FC = () => {
     <section className="bg-black text-white py-20 px-3 lg:px-12 w-full selection:bg-white selection:text-black">
       <div className="max-w-[1400px] mx-auto">
         <div className="mb-16">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="size-2.5 bg-white"></div>
-            <span className="uppercase font-chivo-mono text-sm">
-              We vs Others
-            </span>
-          </div>
+          <SectionLabel text="We vs Others" />
 
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-end">
             <h2 className="font-heading text-4xl text-muted-foreground sm:text-5xl lg:text-[3.5rem] leading-[1.1]">
-              Move <span className="text-foreground">Faster</span> Without
-              Breaking <br className="hidden sm:block" />
-              Your <span className="text-foreground">Product</span>
+              Move <span className="">Faster</span> Without Breaking{" "}
+              <br className="hidden sm:block" />
+              <span className="text-foreground italic"> Your Product</span>
             </h2>
             <p className="text-[#8a8a93] text-[15px] sm:text-base leading-relaxed max-w-lg mb-2">
               Most teams optimize for speed and pay for it later. We optimize
@@ -192,14 +203,20 @@ const CompareSection: React.FC = () => {
 
         <div className="mt-20 flex flex-row items-center justify-center gap-10 sm:gap-32 pb-10">
           <div className="text-center">
-            <p className="lg:text-4xl text-3xl font-medium font-mono mb-3">50%</p>
+            <p className="lg:text-4xl text-3xl font-medium font-mono mb-3">
+              50%
+            </p>
             <p className="text-[13px] text-foreground/70">
               Faster Product Delivery
             </p>
           </div>
           <div className="text-center">
-            <p className="lg:text-4xl text-3xl font-medium font-mono mb-3">30%</p>
-            <p className="text-[13px] text-foreground/70">More Capital-Efficient</p>
+            <p className="lg:text-4xl text-3xl font-medium font-mono mb-3">
+              30%
+            </p>
+            <p className="text-[13px] text-foreground/70">
+              More Capital-Efficient
+            </p>
           </div>
         </div>
       </div>
