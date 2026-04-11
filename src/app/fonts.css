@@ -1,0 +1,17 @@
+@layer utilities {
+  .font-geist {
+    font-family: var(--font-geist);
+  }
+
+  .font-chivo-mono {
+    font-family: var(--font-chivo-mono);
+  }
+
+  .font-heading {
+    font-family: var(--font-instrument-serif);
+  }
+
+  .font-bricolage {
+    font-family: var(--font-bricolage-grotesque);
+  }
+}
