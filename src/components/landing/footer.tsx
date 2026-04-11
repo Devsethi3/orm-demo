@@ -27,7 +27,8 @@ export default function Footer() {
         </div>
 
         <h2 className="font-heading text-[2.75rem] sm:text-6xl md:text-[4.5rem] leading-[1.05] mb-8 text-muted-foreground">
-          Let&apos;s <span className="text-foreground">Build Something</span> That <br className="hidden sm:block" />
+          Let&apos;s <span className="text-foreground">Build Something</span>{" "}
+          That <br className="hidden sm:block" />
           <AnimatedShinyText>Actually Scales</AnimatedShinyText>
         </h2>
 
@@ -37,9 +38,12 @@ export default function Footer() {
           long-term stability.
         </p>
 
-        <Button className="h-10! lg:text-sm text-xs">
-          Book a strategy call <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
-        </Button>
+        <Link href="/contact-us">
+          <Button className="h-10! lg:text-sm text-xs">
+            Book a strategy call{" "}
+            <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+          </Button>
+        </Link>
       </div>
 
       <div className="flex-grow min-h-[100px] md:min-h-[200px]"></div>
